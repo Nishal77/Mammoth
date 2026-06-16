@@ -12,6 +12,9 @@ import { departmentsRoute } from "./routes/departments/departments-route.ts";
 import { metricsRoute } from "./routes/metrics/metrics-route.ts";
 import { onboardingRoute } from "./routes/onboarding/onboarding-route.ts";
 import { notificationConnectRoute } from "./routes/users/notification-connect-route.ts";
+import { stripeWebhookRoute } from "./routes/webhooks/stripe-webhook-route.ts";
+import { integrationsRoute } from "./routes/integrations/integrations-route.ts";
+import { billingRoute } from "./routes/billing/billing-route.ts";
 import { auth } from "./lib/auth.ts";
 import { initSocketServer } from "./lib/socket.ts";
 import { toNodeHandler } from "better-auth/node";
@@ -107,6 +110,20 @@ await app.register(onboardingRoute, { prefix: "/api/v1/onboarding" });
 await app.register(notificationConnectRoute, {
   prefix: "/api/v1/users/me/notifications",
 });
+
+// Integrations (Stripe MRR, HubSpot, GitHub, Slack, Plausible)
+await app.register(
+  async (instance) => {
+    await instance.register(integrationsRoute, { prefix: "/" });
+  },
+  { prefix: "/api/v1/companies/:companyId/integrations" }
+);
+
+// Stripe MRR webhook (one endpoint per company, identified by ?companyId=)
+await app.register(stripeWebhookRoute, { prefix: "/api/v1/webhooks" });
+
+// Billing (MAMMOTH subscriptions — checkout, portal, usage, billing webhook)
+await app.register(billingRoute, { prefix: "/api/v1/billing" });
 
 // Start server
 const httpServer = await app.listen({ port: PORT, host: HOST });

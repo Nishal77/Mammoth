@@ -29,6 +29,8 @@ export const companies = pgTable(
     logoUrl: text("logo_url"),
     brandVoice: text("brand_voice"),
     settings: jsonb("settings").$type<Record<string, unknown>>().default({}),
+    // Set when the owner subscribes to a MAMMOTH paid plan — used for billing portal and webhook lookup
+    stripeCustomerId: text("stripe_customer_id"),
     // Optimistic lock — increment on every update, reject if stale
     version: integer("version").default(1).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
