@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js"
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@mammoth/agents": "workspace:*",
@@ -17,7 +18,8 @@
   },
   "devDependencies": {
     "@mammoth/typescript-config": "workspace:*",
-    "typescript": "^5.7.3",
-    "tsx": "^4.19.2"
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
   }
 }

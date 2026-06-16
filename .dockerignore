@@ -1,0 +1,12 @@
+**/.git
+**/.gitignore
+**/.env*
+!**/.env.example
+**/node_modules
+**/dist
+**/.next
+**/coverage
+**/*.log
+**/turbo/.cache
+**/.turbo
+**/playwright-report

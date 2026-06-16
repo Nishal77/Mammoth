@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx --watch src/index.ts",
-    "start": "node --experimental-specifier-resolution=node dist/index.js",
-    "build": "tsc --build"
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@mammoth/agents": "workspace:*",
@@ -14,7 +15,8 @@
     "bullmq": "^5.0.0"
   },
   "devDependencies": {
-    "@mammoth/tsconfig": "workspace:*",
+    "@mammoth/typescript-config": "workspace:*",
+    "tsup": "^8.3.5",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
   }

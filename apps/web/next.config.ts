@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   // API is on a different port — proxy in dev so browser doesn't need CORS
   async rewrites() {
     return [
