@@ -1,5 +1,5 @@
 import { db, companyMemory, companies } from "@mammoth/db";
-import { eq, and, isNull, desc, gt } from "drizzle-orm";
+import { eq, and, isNull, or, desc, gt } from "drizzle-orm";
 import { NotFoundError } from "@mammoth/shared/errors";
 
 export type CompanyContext = {
@@ -45,12 +45,8 @@ export async function loadCompanyContext(
     db.query.companyMemory.findMany({
       where: and(
         eq(companyMemory.companyId, companyId),
-        // Skip expired entries
-        gt(
-          companyMemory.expiresAt,
-          // Use null-safe: if expiresAt is null, include the row
-          new Date()
-        )
+        // Rows with no expiry are permanent; only exclude explicitly expired ones
+        or(isNull(companyMemory.expiresAt), gt(companyMemory.expiresAt, new Date()))
       ),
       columns: {
         memoryType: true,

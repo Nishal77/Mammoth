@@ -5,6 +5,8 @@ export * from "./memory.ts";
 export * from "./departments.ts";
 export * from "./approvals.ts";
 export * from "./sales.ts";
+export * from "./support.ts";
+export * from "./hr.ts";
 export * from "./content.ts";
 export * from "./metrics.ts";
 export * from "./audit.ts";

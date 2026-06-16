@@ -1,5 +1,5 @@
 {
-  "extends": "@mammoth/tsconfig/base.json",
+  "extends": "@mammoth/typescript-config/base.json",
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src"

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { db, leads, outreachSequences } from "@mammoth/db";
+import { db, leads } from "@mammoth/db";
 import { eq } from "drizzle-orm";
 import { BaseAgent } from "../base/base-agent.ts";
 import { MODELS } from "../router/model-router.ts";
@@ -91,11 +91,11 @@ Return ONLY this JSON:
         lastName: lead.lastName,
         email: lead.email ?? null,
         title: lead.title,
-        company: lead.company,
+        companyName: lead.company,
         companySize: lead.companySize ?? null,
         linkedinUrl: lead.linkedinUrl ?? null,
-        icpScore: lead.icpScore,
-        painPoints: lead.painPoints,
+        icpScore: lead.icpScore.toString(),
+        enrichmentData: { painPoints: lead.painPoints },
         source: "ai_research",
         status: "new",
       }).onConflictDoNothing();

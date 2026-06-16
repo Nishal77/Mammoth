@@ -15,7 +15,7 @@ const {
   companyMemory,
   companyGoals,
   departments,
-  metrics,
+  metricsDaily,
   trustScores,
 } = schema;
 
@@ -234,22 +234,21 @@ async function seed(): Promise<void> {
   // 7. Seed sample metrics
   const now = Date.now();
   for (let i = 6; i >= 0; i--) {
-    const recordedAt = new Date(now - i * 7 * 24 * 60 * 60 * 1000);
+    const dateMs = now - i * 7 * 24 * 60 * 60 * 1000;
+    const dateStr = new Date(dateMs).toISOString().slice(0, 10);
     const mrr = (2400 - i * 80).toString();
-    const totalRevenue = (2400 - i * 80 + 400).toString();
 
     await db
-      .insert(metrics)
+      .insert(metricsDaily)
       .values({
         id: uuidv4(),
         companyId,
+        date: dateStr,
         mrr,
-        totalRevenue,
-        totalLeads: 12 + (6 - i) * 3,
-        totalCustomers: 8 + (6 - i),
-        totalTasks: (6 - i) * 24,
-        recordedAt,
-        createdAt: new Date(),
+        arr: ((2400 - i * 80) * 12).toString(),
+        leadsCreated: 12 + (6 - i) * 3,
+        activeCustomers: 8 + (6 - i),
+        tasksRun: (6 - i) * 24,
       })
       .onConflictDoNothing();
   }

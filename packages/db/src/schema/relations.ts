@@ -6,6 +6,8 @@ import { companyMemory, memoryEmbeddings } from "./memory.ts";
 import { departments, departmentTasks, taskRuns } from "./departments.ts";
 import { approvals, trustScores } from "./approvals.ts";
 import { leads, outreachSequences, customers } from "./sales.ts";
+import { supportTickets, knowledgeBaseArticles } from "./support.ts";
+import { jobPostings, candidates } from "./hr.ts";
 import { contentPieces } from "./content.ts";
 import { metricsDaily, integrations, briefings, notifications } from "./metrics.ts";
 import { agentRuns, auditLog } from "./audit.ts";
@@ -24,6 +26,10 @@ export const companiesRelations = relations(companies, ({ one, many }) => ({
   memory: many(companyMemory),
   leads: many(leads),
   customers: many(customers),
+  supportTickets: many(supportTickets),
+  knowledgeBaseArticles: many(knowledgeBaseArticles),
+  jobPostings: many(jobPostings),
+  candidates: many(candidates),
   content: many(contentPieces),
   metrics: many(metricsDaily),
   integrations: many(integrations),
@@ -150,6 +156,41 @@ export const customersRelations = relations(customers, ({ one }) => ({
   company: one(companies, {
     fields: [customers.companyId],
     references: [companies.id],
+  }),
+}));
+
+// ---- support ----
+export const supportTicketsRelations = relations(supportTickets, ({ one }) => ({
+  company: one(companies, {
+    fields: [supportTickets.companyId],
+    references: [companies.id],
+  }),
+}));
+
+export const knowledgeBaseArticlesRelations = relations(knowledgeBaseArticles, ({ one }) => ({
+  company: one(companies, {
+    fields: [knowledgeBaseArticles.companyId],
+    references: [companies.id],
+  }),
+}));
+
+// ---- hr ----
+export const jobPostingsRelations = relations(jobPostings, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [jobPostings.companyId],
+    references: [companies.id],
+  }),
+  candidates: many(candidates),
+}));
+
+export const candidatesRelations = relations(candidates, ({ one }) => ({
+  company: one(companies, {
+    fields: [candidates.companyId],
+    references: [companies.id],
+  }),
+  jobPosting: one(jobPostings, {
+    fields: [candidates.jobPostingId],
+    references: [jobPostings.id],
   }),
 }));
 
