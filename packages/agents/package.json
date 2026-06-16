@@ -1,0 +1,25 @@
+{
+  "name": "@mammoth/agents",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./base": "./src/base/index.ts",
+    "./router": "./src/router/model-router.ts",
+    "./memory": "./src/memory/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "openai": "^4.86.1",
+    "bullmq": "^5.34.5",
+    "ioredis": "^5.4.2",
+    "zod": "^3.24.1",
+    "@mammoth/db": "workspace:*",
+    "@mammoth/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@mammoth/typescript-config": "workspace:*",
+    "typescript": "^5.7.3"
+  }
+}

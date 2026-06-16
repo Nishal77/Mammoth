@@ -1,0 +1,21 @@
+{
+  "name": "@mammoth/orchestrator",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx --watch src/index.ts",
+    "start": "node --experimental-specifier-resolution=node dist/index.js",
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "@mammoth/agents": "workspace:*",
+    "@mammoth/db": "workspace:*",
+    "bullmq": "^5.0.0"
+  },
+  "devDependencies": {
+    "@mammoth/tsconfig": "workspace:*",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

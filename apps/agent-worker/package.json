@@ -1,0 +1,23 @@
+{
+  "name": "@mammoth/agent-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@mammoth/agents": "workspace:*",
+    "@mammoth/db": "workspace:*",
+    "@mammoth/shared": "workspace:*",
+    "bullmq": "^5.34.5",
+    "ioredis": "^5.4.2"
+  },
+  "devDependencies": {
+    "@mammoth/typescript-config": "workspace:*",
+    "typescript": "^5.7.3",
+    "tsx": "^4.19.2"
+  }
+}
