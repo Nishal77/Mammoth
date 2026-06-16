@@ -1,6 +1,6 @@
 const MODEL_COST_PER_MILLION_TOKENS = {
   "claude-sonnet-4-6": { input: 3.0, output: 15.0 },
-  "claude-haiku-4-5": { input: 0.8, output: 4.0 },
+  "claude-haiku-4-5-20251001": { input: 0.8, output: 4.0 },
   "gpt-4o-mini": { input: 0.15, output: 0.6 },
   "text-embedding-3-small": { input: 0.02, output: 0 },
 } as const;

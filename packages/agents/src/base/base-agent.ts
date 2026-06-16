@@ -2,6 +2,7 @@ import { db, departmentTasks, taskRuns, agentRuns } from "@mammoth/db";
 import { eq, sql } from "drizzle-orm";
 import { loadCompanyContext, formatContextForPrompt } from "../memory/memory-loader.ts";
 import { callModel, MODELS } from "../router/model-router.ts";
+import { captureOutcome } from "../goal/outcome-capturer.ts";
 import type { ModelId, ModelCallResult } from "../router/model-router.ts";
 import type { CompanyContext } from "../memory/memory-loader.ts";
 
@@ -62,6 +63,14 @@ export abstract class BaseAgent {
       await this.markTaskCompleted();
       await this.incrementAgentRunStats("completed");
 
+      // Non-blocking: save outcome to memory for future agent context
+      void captureOutcome({
+        companyId: runCtx.companyId,
+        department: this.departmentName,
+        taskType: taskInput.taskType,
+        output,
+      });
+
       return output;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -101,13 +110,15 @@ ${options.externalData.content}
 Process the external data above according to your task instruction.`;
     }
 
-    const result = await callModel({
+    const callOptions: Parameters<typeof callModel>[0] = {
       model,
       systemPrompt: options.systemPrompt,
       messages: [{ role: "user", content: userContent }],
-      maxTokens: options.maxTokens,
       companyId: this.runCtx.companyId,
-    });
+    };
+    if (options.maxTokens !== undefined) callOptions.maxTokens = options.maxTokens;
+
+    const result = await callModel(callOptions);
 
     await db.insert(taskRuns).values({
       taskId: this.runCtx.taskId,

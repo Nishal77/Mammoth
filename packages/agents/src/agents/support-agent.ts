@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { db, supportTickets, knowledgeBaseArticles, approvals, companies } from "@mammoth/db";
-import { eq, and } from "drizzle-orm";
+import { db, supportTickets, approvals, companies } from "@mammoth/db";
+import { eq } from "drizzle-orm";
 import { BaseAgent } from "../base/base-agent.ts";
 import { MODELS } from "../router/model-router.ts";
 import type { AgentTaskInput, AgentTaskOutput } from "../base/base-agent.ts";

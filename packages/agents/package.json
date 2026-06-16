@@ -12,6 +12,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "openai": "^4.86.1",
+    "@qdrant/js-client-rest": "^1.13.0",
     "bullmq": "^5.34.5",
     "ioredis": "^5.4.2",
     "zod": "^3.24.1",

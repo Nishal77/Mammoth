@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db, metricsDaily, companyGoals } from "@mammoth/db";
-import { eq, desc, gte } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { BaseAgent } from "../base/base-agent.ts";
 import { MODELS } from "../router/model-router.ts";
 import type { AgentTaskInput, AgentTaskOutput } from "../base/base-agent.ts";
@@ -44,8 +44,6 @@ export class FinanceAgent extends BaseAgent {
 
   private async generateFinancialReport(input: AgentTaskInput): Promise<AgentTaskOutput> {
     const { period = "30d" } = input.parameters as { period?: string };
-
-    const sinceDate = this.periodToDate(period);
 
     const [recentMetrics, activeGoals] = await Promise.all([
       db
@@ -250,10 +248,6 @@ Return a concise analysis in plain text.`,
     }
   }
 
-  private periodToDate(period: string): Date {
-    const days = parseInt(period.replace("d", ""), 10) || 30;
-    return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  }
 }
 
 const FINANCE_ROLE = `You analyze financial data and surface insights.

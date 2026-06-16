@@ -124,8 +124,9 @@ Return ONLY this JSON:
     if (!lead) throw new Error(`Lead ${leadId} not found`);
 
     const systemPrompt = this.buildSystemPrompt(SALES_ROLE);
-    const leadContext = `Lead: ${lead.firstName} ${lead.lastName}, ${lead.title} at ${lead.company}
-Pain points: ${(lead.painPoints as string[]).join(", ")}
+    const painPoints = (lead.enrichmentData as { painPoints?: string[] } | null)?.painPoints ?? [];
+    const leadContext = `Lead: ${lead.firstName} ${lead.lastName}, ${lead.title} at ${lead.companyName ?? "—"}
+Pain points: ${painPoints.join(", ") || "unknown"}
 ${context ?? ""}`;
 
     const result = await this.callLlm({

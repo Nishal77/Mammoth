@@ -16,7 +16,9 @@
     "exactOptionalPropertyTypes": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   },
   "exclude": ["node_modules", "dist"]
 }

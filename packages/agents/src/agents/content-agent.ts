@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { db, contentPieces, approvals, companies, companyMemory } from "@mammoth/db";
+import { db, approvals, companies, companyMemory } from "@mammoth/db";
 import { eq, and } from "drizzle-orm";
 import { BaseAgent } from "../base/base-agent.ts";
 import { MODELS } from "../router/model-router.ts";

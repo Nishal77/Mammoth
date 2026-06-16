@@ -58,7 +58,7 @@ export async function loadCompanyContext(
       limit: 200,
     }),
     db.query.companyGoals.findFirst({
-      where: (g, { eq, and, isNull }) =>
+      where: (g, { eq, and }) =>
         and(eq(g.companyId, companyId), eq(g.status, "active")),
       columns: {
         title: true,

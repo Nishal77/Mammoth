@@ -1,8 +1,11 @@
 import { z } from "zod";
 import { db, companyGoals, departments, metricsDaily, strategyDecisions } from "@mammoth/db";
-import { eq, and, isNull, desc, gte } from "drizzle-orm";
+import { eq, and, desc, gte } from "drizzle-orm";
 import { BaseAgent } from "../base/base-agent.ts";
 import { MODELS } from "../router/model-router.ts";
+import { upsertMemory } from "../memory/memory-writer.ts";
+import { updateGoalProgress } from "../goal/goal-progress-tracker.ts";
+import { generateBriefing } from "../goal/briefing-generator.ts";
 import type { AgentTaskInput, AgentTaskOutput } from "../base/base-agent.ts";
 
 const CeoOutputSchema = z.object({
@@ -39,7 +42,7 @@ export class CeoBrainAgent extends BaseAgent {
     super("CEO Brain", MODELS.SONNET);
   }
 
-  protected async execute(input: AgentTaskInput): Promise<AgentTaskOutput> {
+  protected async execute(_input: AgentTaskInput): Promise<AgentTaskOutput> {
     const snapshot = await this.loadCompanySnapshot();
     const systemPrompt = this.buildSystemPrompt(CEO_ROLE_DESCRIPTION);
 
@@ -54,6 +57,20 @@ export class CeoBrainAgent extends BaseAgent {
     const parsed = this.parseOutput(result.content);
 
     await this.saveStrategyDecision(parsed);
+
+    // Update goal currentValue from latest MRR; graduate if target is hit
+    await updateGoalProgress(this.runCtx.companyId);
+
+    // Persist department priorities to memory — future agents read these as context
+    await this.savePrioritiesToMemory(parsed.priorities);
+
+    // Generate daily briefing (no-op if already done today)
+    void generateBriefing(this.runCtx.companyId, "daily");
+
+    // Generate weekly briefing on Mondays (no-op if already done this week)
+    if (new Date().getDay() === 1) {
+      void generateBriefing(this.runCtx.companyId, "weekly");
+    }
 
     return {
       content: result.content,
@@ -80,8 +97,7 @@ export class CeoBrainAgent extends BaseAgent {
         db.query.companyGoals.findFirst({
           where: and(
             eq(companyGoals.companyId, this.runCtx.companyId),
-            eq(companyGoals.status, "active"),
-            isNull(companyGoals.deletedAt)
+            eq(companyGoals.status, "active")
           ),
         }),
         db.query.metricsDaily.findMany({
@@ -189,6 +205,28 @@ Return ONLY the JSON object. No explanation.`;
         confidence: 0.3,
       };
     }
+  }
+
+  /**
+   * Persists CEO Brain priorities to company memory as playbook_refinement entries.
+   * Each department agent reads these on its next run via the memory-loader.
+   */
+  private async savePrioritiesToMemory(
+    priorities: CeoOutput["priorities"]
+  ): Promise<void> {
+    const week = new Date().toISOString().slice(0, 10);
+    await Promise.all(
+      priorities.map((p) =>
+        upsertMemory({
+          companyId: this.runCtx.companyId,
+          memoryType: "playbook_refinement",
+          key: `${p.department}:weekly_priority:${week}`,
+          value: `Focus: ${p.focus}\nWeekly target: ${p.weeklyTarget}`,
+          source: "agent:ceo_brain",
+          confidence: 0.9,
+        }).catch(() => undefined)
+      )
+    );
   }
 
   private async saveStrategyDecision(output: CeoOutput): Promise<void> {

@@ -1,7 +1,5 @@
 import {
-  decimal,
   index,
-  integer,
   jsonb,
   pgTable,
   smallint,

@@ -55,10 +55,6 @@ export const strategyDecisionsRelations = relations(strategyDecisions, ({ one })
     fields: [strategyDecisions.companyId],
     references: [companies.id],
   }),
-  goal: one(companyGoals, {
-    fields: [strategyDecisions.goalId],
-    references: [companyGoals.id],
-  }),
 }));
 
 // ---- memory ----

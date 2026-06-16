@@ -1,6 +1,5 @@
 import {
   date,
-  decimal,
   index,
   jsonb,
   numeric,
