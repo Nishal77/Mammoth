@@ -99,6 +99,22 @@ services:
     profiles:
       - observability
 
+  envoy:
+    build:
+      context: ../envoy
+      dockerfile: Dockerfile
+    container_name: mammoth_envoy
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+      - "9901:9901"
+    depends_on:
+      - postgres
+      - redis
+    profiles:
+      - proxy
+
 volumes:
   postgres_data:
   redis_data:

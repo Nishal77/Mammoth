@@ -11,7 +11,12 @@
     "./github": "./src/github/index.ts",
     "./slack": "./src/slack/index.ts",
     "./email": "./src/email/index.ts",
-    "./billing": "./src/billing/index.ts"
+    "./billing": "./src/billing/index.ts",
+    "./apollo": "./src/apollo/index.ts",
+    "./exa": "./src/exa/index.ts",
+    "./linkedin": "./src/linkedin/index.ts",
+    "./twitter": "./src/twitter/index.ts",
+    "./vapi": "./src/vapi/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

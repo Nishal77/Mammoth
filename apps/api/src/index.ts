@@ -33,6 +33,7 @@ import { metricsRoute } from "./routes/metrics/metrics-route.ts";
 import { onboardingRoute } from "./routes/onboarding/onboarding-route.ts";
 import { notificationConnectRoute } from "./routes/users/notification-connect-route.ts";
 import { stripeWebhookRoute } from "./routes/webhooks/stripe-webhook-route.ts";
+import { githubWebhookRoute } from "./routes/webhooks/github-webhook-route.ts";
 import { integrationsRoute } from "./routes/integrations/integrations-route.ts";
 import { billingRoute } from "./routes/billing/billing-route.ts";
 import { auth } from "./lib/auth.ts";
@@ -146,7 +147,8 @@ await app.register(
 );
 
 // Stripe MRR webhook (one endpoint per company, identified by ?companyId=)
-await app.register(stripeWebhookRoute, { prefix: "/api/v1/webhooks" });
+await app.register(stripeWebhookRoute, { prefix: "/api/v1/webhooks/stripe" });
+await app.register(githubWebhookRoute, { prefix: "/api/v1/webhooks/github" });
 
 // Billing (MAMMOTH subscriptions — checkout, portal, usage, billing webhook)
 await app.register(billingRoute, { prefix: "/api/v1/billing" });

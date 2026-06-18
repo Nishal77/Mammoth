@@ -1,11 +1,23 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { Queue } from "bullmq";
 import { db, approvals, trustScores, checkAndPromoteTrustScore } from "@mammoth/db";
 import { eq, and, lt, desc } from "drizzle-orm";
 import { authenticate } from "../../middleware/authenticate.ts";
 import { requireCompanyAccess } from "../../middleware/require-company-access.ts";
 import { NotFoundError, ValidationError, ForbiddenError } from "@mammoth/shared/errors";
 import { successResponse } from "@mammoth/shared/types";
+
+const EXECUTION_QUEUE_NAME = "approval:execute";
+
+const executionQueue = new Queue(EXECUTION_QUEUE_NAME, {
+  connection: {
+    host: process.env["REDIS_HOST"] ?? "localhost",
+    port: Number(process.env["REDIS_PORT"] ?? 6379),
+    password: process.env["REDIS_PASSWORD"] ?? undefined,
+    maxRetriesPerRequest: null,
+  },
+});
 
 const ResolveSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("approve") }),
@@ -189,6 +201,35 @@ export async function approvalsRoute(app: FastifyInstance): Promise<void> {
       }).catch((error: unknown) => {
         console.error("[approvals] Trust score promotion check failed:", error);
       });
+
+      // Enqueue execution when approved or content was modified — actions with "approved"
+      // or "modified" status both get dispatched. Rejections do not.
+      if (newStatus === "approved" || newStatus === "modified") {
+        const contentToExecute =
+          newStatus === "modified" && input.action === "modify"
+            ? input.modifiedContent
+            : (resolved?.outputContent ?? "");
+
+        void executionQueue
+          .add(
+            `execute:${approvalId}`,
+            {
+              approvalId,
+              companyId: request.company.id,
+              department: approval.department,
+              actionType: approval.actionType,
+              outputContent: contentToExecute,
+            },
+            {
+              jobId: `execute:${approvalId}`,
+              attempts: 3,
+              backoff: { type: "exponential", delay: 5_000 },
+            }
+          )
+          .catch((error: unknown) => {
+            console.error("[approvals] Failed to enqueue execution job:", error);
+          });
+      }
 
       return reply.send(successResponse(resolved));
     }

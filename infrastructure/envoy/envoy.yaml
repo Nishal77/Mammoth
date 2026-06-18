@@ -1,0 +1,163 @@
+admin:
+  address:
+    socket_address:
+      address: 0.0.0.0
+      port_value: 9901
+
+static_resources:
+  listeners:
+    # Public-facing API listener — all external traffic enters here
+    - name: api_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 8080
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_api
+                codec_type: AUTO
+                route_config:
+                  name: api_routes
+                  virtual_hosts:
+                    - name: api_service
+                      domains: ["*"]
+                      routes:
+                        # Webhook routes — higher rate limit, no auth passthrough
+                        - match:
+                            prefix: "/api/v1/webhooks"
+                          route:
+                            cluster: api_cluster
+                            timeout: 10s
+                        # Agent task status WebSocket route
+                        - match:
+                            prefix: "/socket.io"
+                          route:
+                            cluster: api_cluster
+                            timeout: 0s
+                            upgrade_configs:
+                              - upgrade_type: websocket
+                        # Default — all API traffic
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: api_cluster
+                            timeout: 30s
+                http_filters:
+                  # Rate limiting per IP to prevent abuse
+                  - name: envoy.filters.http.local_ratelimit
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+                      stat_prefix: local_rate_limiter
+                      token_bucket:
+                        max_tokens: 1000
+                        tokens_per_fill: 1000
+                        fill_interval: 60s
+                      filter_enabled:
+                        runtime_key: local_rate_limit_enabled
+                        default_value:
+                          numerator: 100
+                          denominator: HUNDRED
+                      filter_enforced:
+                        runtime_key: local_rate_limit_enforced
+                        default_value:
+                          numerator: 100
+                          denominator: HUNDRED
+                      response_headers_to_add:
+                        - append: false
+                          header:
+                            key: x-local-rate-limit
+                            value: "true"
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+    # Internal service-to-service listener — agent-worker and orchestrator talk through here
+    # mTLS enforced on this listener in production (see cluster config)
+    - name: internal_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 8081
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_internal
+                codec_type: AUTO
+                route_config:
+                  name: internal_routes
+                  virtual_hosts:
+                    - name: notification_service
+                      domains: ["notification-service.*", "notification-service"]
+                      routes:
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: notification_cluster
+                            timeout: 15s
+                    - name: agent_worker
+                      domains: ["agent-worker.*", "agent-worker"]
+                      routes:
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: agent_worker_cluster
+                            timeout: 120s
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+  clusters:
+    - name: api_cluster
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: api_cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: api
+                      port_value: 4000
+      health_checks:
+        - timeout: 5s
+          interval: 10s
+          unhealthy_threshold: 3
+          healthy_threshold: 2
+          http_health_check:
+            path: "/internal/health"
+
+    - name: notification_cluster
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: notification_cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: notification-service
+                      port_value: 3002
+
+    - name: agent_worker_cluster
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: agent_worker_cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: agent-worker
+                      port_value: 3003

@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { db, leads } from "@mammoth/db";
-import { eq } from "drizzle-orm";
+import { db, leads, integrations } from "@mammoth/db";
+import { eq, and } from "drizzle-orm";
+import type { ApolloLead } from "@mammoth/integrations/apollo";
 import { BaseAgent } from "../base/base-agent.ts";
 import { MODELS } from "../router/model-router.ts";
 import type { AgentTaskInput, AgentTaskOutput } from "../base/base-agent.ts";
@@ -33,8 +34,9 @@ type SalesTaskType = "lead_research" | "outreach_sequence" | "crm_update";
 
 /**
  * Sales Agent — lead research, outreach sequences, CRM operations.
- * Lead research is Ring 1 (no approval needed, read-only action).
- * Outreach sequences are Ring 2 (4h veto before emails are sent).
+ * Uses Apollo.io for real prospect data when the integration is configured.
+ * Falls back to AI-synthesised leads if Apollo is not connected.
+ * Outreach sequences are Ring 2 (4h veto before emails are dispatched).
  */
 export class SalesAgent extends BaseAgent {
   constructor() {
@@ -51,11 +53,76 @@ export class SalesAgent extends BaseAgent {
   }
 
   private async researchLeads(input: AgentTaskInput): Promise<AgentTaskOutput> {
-    const { icp, count = 5 } = input.parameters as {
+    const { icp, count = 10, titles, locations } = input.parameters as {
       icp: string;
       count?: number;
+      titles?: string[];
+      locations?: string[];
     };
 
+    // Try Apollo first — real verified lead data
+    const apolloLeads = await this.fetchFromApollo(icp, count, titles, locations);
+
+    if (apolloLeads.length > 0) {
+      return this.persistAndReturnLeads(apolloLeads, "apollo");
+    }
+
+    // Fallback: AI-synthesised leads when Apollo is not connected
+    return this.synthesiseLeadsWithAi(icp, count);
+  }
+
+  private async fetchFromApollo(
+    icp: string,
+    count: number,
+    titles?: string[],
+    locations?: string[]
+  ): Promise<z.infer<typeof LeadResearchOutputSchema>["leads"]> {
+    const integration = await db.query.integrations.findFirst({
+      where: and(
+        eq(integrations.companyId, this.runCtx.companyId),
+        eq(integrations.provider, "apollo"),
+        eq(integrations.status, "connected")
+      ),
+      columns: { accessTokenEnc: true },
+    });
+
+    if (!integration?.accessTokenEnc) return [];
+
+    // Import at call time — keeps the package boundary clear
+    const { searchApolloLeads } = await import("@mammoth/integrations/apollo");
+    const { decryptToken } = await import("@mammoth/integrations/oauth");
+
+    let apiKey: string;
+    try {
+      apiKey = decryptToken(integration.accessTokenEnc);
+    } catch {
+      return [];
+    }
+
+    const apolloLeads = await searchApolloLeads(apiKey, {
+      personTitles: titles ?? [],
+      personLocations: locations ?? [],
+      keywords: [icp],
+      perPage: Math.min(count, 25),
+    });
+
+    return apolloLeads.map((l: ApolloLead) => ({
+      firstName: l.firstName,
+      lastName: l.lastName,
+      email: l.email ?? undefined,
+      title: l.title,
+      company: l.company,
+      companySize: undefined,
+      linkedinUrl: l.linkedinUrl ?? undefined,
+      icpScore: 75,
+      painPoints: [],
+    }));
+  }
+
+  private async synthesiseLeadsWithAi(
+    icp: string,
+    count: number
+  ): Promise<AgentTaskOutput> {
     const result = await this.callLlm({
       systemPrompt: this.buildSystemPrompt(SALES_ROLE),
       userMessage: `Research ${count} qualified leads matching this ICP: "${icp}".
@@ -82,9 +149,14 @@ Return ONLY this JSON:
     });
 
     const parsed = this.parseLeads(result.content);
+    return this.persistAndReturnLeads(parsed.leads, "ai_research");
+  }
 
-    // Persist leads to DB — Ring 1, no approval gate for read-only research
-    for (const lead of parsed.leads) {
+  private async persistAndReturnLeads(
+    leadList: z.infer<typeof LeadResearchOutputSchema>["leads"],
+    source: string
+  ): Promise<AgentTaskOutput> {
+    for (const lead of leadList) {
       await db
         .insert(leads)
         .values({
@@ -98,21 +170,21 @@ Return ONLY this JSON:
           linkedinUrl: lead.linkedinUrl ?? null,
           icpScore: lead.icpScore.toString(),
           enrichmentData: { painPoints: lead.painPoints },
-          source: "ai_research",
+          source,
           status: "new",
         })
         .onConflictDoNothing();
     }
 
     return {
-      content: parsed.leads
+      content: leadList
         .map((l) => `${l.firstName} ${l.lastName} @ ${l.company} (ICP: ${l.icpScore}%)`)
         .join("\n"),
-      summary: { leadsFound: parsed.leads.length, leads: parsed.leads },
+      summary: { leadsFound: leadList.length, source, leads: leadList },
       approvalRequired: false,
       ringLevel: 1,
       actionType: "lead_research",
-      confidence: 0.8,
+      confidence: source === "apollo" ? 0.95 : 0.75,
     };
   }
 

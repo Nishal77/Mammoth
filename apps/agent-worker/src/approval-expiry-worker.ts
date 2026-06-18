@@ -1,6 +1,7 @@
 import { Queue, Worker, type Job } from "bullmq";
 import { db, approvals, trustScores, publishNotification, checkAndPromoteTrustScore } from "@mammoth/db";
 import { eq, and, lt, sql } from "drizzle-orm";
+import { executionQueue } from "./action-execution-worker.ts";
 
 const REDIS_CONNECTION = {
   host: process.env["REDIS_HOST"] ?? "localhost",
@@ -57,6 +58,7 @@ async function autoApproveExpired(): Promise<void> {
       companyId: true,
       department: true,
       actionType: true,
+      outputContent: true,
     },
   });
 
@@ -102,9 +104,22 @@ async function autoApproveExpired(): Promise<void> {
         });
     });
 
-    console.log(
-      `[expiry-worker] Auto-approved ${approval.id} (${approval.department}/${approval.actionType})`
-    );
+    // Enqueue execution after auto-approval — Ring 2 veto window passed
+    void executionQueue
+      .add(
+        `execute:${approval.id}`,
+        {
+          approvalId: approval.id,
+          companyId: approval.companyId,
+          department: approval.department,
+          actionType: approval.actionType,
+          outputContent: approval.outputContent,
+        },
+        { jobId: `execute:${approval.id}`, attempts: 3, backoff: { type: "exponential", delay: 5_000 } }
+      )
+      .catch((error: unknown) => {
+        console.error("[expiry-worker] Failed to enqueue execution:", error);
+      });
 
     // Non-blocking — promotion check must not fail the expiry cycle
     void checkAndPromoteTrustScore({

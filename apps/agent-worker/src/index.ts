@@ -40,6 +40,7 @@ import {
   expiryWorker,
   registerExpiryCheckJob,
 } from "./approval-expiry-worker.ts";
+import { executionWorker } from "./action-execution-worker.ts";
 import Redis from "ioredis";
 
 // Shared Redis connection used for DLQ publishing.
@@ -176,12 +177,14 @@ await registerExpiryCheckJob();
 
 log.info(`Agent worker started`, { queue: QUEUE_NAMES.AGENT_TASKS });
 log.info("Approval expiry worker running — checks every 5 minutes");
+log.info("Action execution worker running — dispatches approved actions");
 
 const shutdown = async (signal: string): Promise<void> => {
   log.info(`Received ${signal}, shutting down gracefully`);
   await Promise.all([
     worker.close(),
     expiryWorker.close(),
+    executionWorker.close(),
     redis.quit(),
     flushSentry(),
     shutdownTracing(),

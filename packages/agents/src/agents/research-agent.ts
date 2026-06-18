@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { db, companyMemory } from "@mammoth/db";
+import { db, companyMemory, integrations } from "@mammoth/db";
+import { eq, and } from "drizzle-orm";
 import { BaseAgent } from "../base/base-agent.ts";
 import { MODELS } from "../router/model-router.ts";
 import type { AgentTaskInput, AgentTaskOutput } from "../base/base-agent.ts";
@@ -33,8 +34,9 @@ type ResearchTaskType = "competitor_intel" | "market_analysis" | "trend_report";
 
 /**
  * Research Agent — competitor intel, market analysis, trend reports.
- * Findings are written to company memory as Ring 1 (no approval, internal write).
- * Recommended strategic pivots are Ring 3 (explicit founder sign-off required).
+ * Uses Exa AI for real-time web search when the integration is configured.
+ * Falls back to model knowledge when Exa is not connected.
+ * Findings are Ring 1 (internal write). Strategic pivots are Ring 3.
  */
 export class ResearchAgent extends BaseAgent {
   constructor() {
@@ -51,11 +53,54 @@ export class ResearchAgent extends BaseAgent {
     throw new Error(`Research agent does not handle task type: ${taskType}`);
   }
 
+  /**
+   * Loads fresh web search results from Exa for the given query.
+   * Returns an empty string if Exa is not connected — agents degrade gracefully.
+   */
+  private async loadLiveWebContext(query: string, numResults = 8): Promise<string> {
+    const integration = await db.query.integrations.findFirst({
+      where: and(
+        eq(integrations.companyId, this.runCtx.companyId),
+        eq(integrations.provider, "exa"),
+        eq(integrations.status, "connected")
+      ),
+      columns: { accessTokenEnc: true },
+    });
+
+    if (!integration?.accessTokenEnc) return "";
+
+    const { searchWeb, formatSearchResultsForPrompt } = await import("@mammoth/integrations/exa");
+    const { decryptToken } = await import("@mammoth/integrations/oauth");
+
+    let apiKey: string;
+    try {
+      apiKey = decryptToken(integration.accessTokenEnc);
+    } catch {
+      return "";
+    }
+
+    const results = await searchWeb(apiKey, {
+      query,
+      numResults,
+      includeText: true,
+      // Only results from the last 6 months for freshness
+      startPublishedDate: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+
+    return formatSearchResultsForPrompt(results, 3000);
+  }
+
   private async analyzeCompetitors(input: AgentTaskInput): Promise<AgentTaskOutput> {
     const { competitors, companyContext } = input.parameters as {
       competitors: string[];
       companyContext?: string;
     };
+
+    // Pull live news and product pages for each competitor from the web
+    const webContext = await this.loadLiveWebContext(
+      `${competitors.join(" OR ")} product features pricing 2024 2025`,
+      10
+    );
 
     const result = await this.callLlm({
       systemPrompt: this.buildSystemPrompt(RESEARCH_ROLE),
@@ -64,10 +109,15 @@ export class ResearchAgent extends BaseAgent {
 Competitors: ${competitors.join(", ")}
 ${companyContext ? `Our positioning: ${companyContext}` : ""}
 
-For each competitor, analyze their current positioning, publicly known strengths/weaknesses,
-recent product or marketing moves, and threat level.
-Identify market gaps they are not addressing.
-Suggest positioning shifts we could make.
+${
+  webContext
+    ? `<external_data source="live_web_search">
+${webContext}
+</external_data>
+
+Use the live search results above to ground your analysis in current data. Prioritise recent product moves and pricing signals from the search results.`
+    : "Base your analysis on your knowledge of these companies."
+}
 
 Return ONLY this JSON:
 {
@@ -110,16 +160,25 @@ Return ONLY this JSON:
 
     return {
       content: summary,
-      summary: { competitorsAnalyzed: parsed.competitors.length, marketGaps: parsed.marketGaps },
+      summary: {
+        competitorsAnalyzed: parsed.competitors.length,
+        marketGaps: parsed.marketGaps,
+        usedLiveSearch: webContext.length > 0,
+      },
       approvalRequired: false,
       ringLevel: 1,
       actionType: "competitor_intel",
-      confidence: 0.78,
+      confidence: webContext.length > 0 ? 0.9 : 0.78,
     };
   }
 
   private async analyzeMarket(input: AgentTaskInput): Promise<AgentTaskOutput> {
     const { topic, context } = input.parameters as { topic: string; context?: string };
+
+    const webContext = await this.loadLiveWebContext(
+      `${topic} market trend 2024 2025 industry report`,
+      8
+    );
 
     const result = await this.callLlm({
       systemPrompt: this.buildSystemPrompt(RESEARCH_ROLE),
@@ -128,8 +187,13 @@ Return ONLY this JSON:
 Topic: "${topic}"
 ${context ? `Context: ${context}` : ""}
 
-Assess the trend's impact level, timeframe, and specific implications for our business.
-List concrete actions we could take.
+${
+  webContext
+    ? `<external_data source="live_web_search">
+${webContext}
+</external_data>`
+    : ""
+}
 
 Return ONLY this JSON:
 {
@@ -145,7 +209,6 @@ Return ONLY this JSON:
 
     const parsed = this.parseMarketAnalysis(result.content);
 
-    // Persist to market_intel memory — Ring 1 (internal write, no external action)
     const memoryKey = `market_trend_${topic.toLowerCase().replace(/\s+/g, "_").slice(0, 50)}`;
     await db
       .insert(companyMemory)
@@ -167,11 +230,12 @@ Return ONLY this JSON:
         trend: parsed.trend,
         impactLevel: parsed.impactLevel,
         actionsCount: parsed.recommendedActions.length,
+        usedLiveSearch: webContext.length > 0,
       },
       approvalRequired: false,
       ringLevel: 1,
       actionType: "market_analysis",
-      confidence: 0.75,
+      confidence: webContext.length > 0 ? 0.88 : 0.75,
     };
   }
 
@@ -181,30 +245,45 @@ Return ONLY this JSON:
       focusAreas?: string[];
     };
 
+    const webContext = await this.loadLiveWebContext(
+      `${industry} ${focusAreas?.join(" ") ?? ""} trends predictions 2025`,
+      12
+    );
+
     const result = await this.callLlm({
       systemPrompt: this.buildSystemPrompt(RESEARCH_ROLE),
       userMessage: `Write a strategic trend report for the ${industry} industry.
 ${focusAreas ? `Focus areas: ${focusAreas.join(", ")}` : ""}
 
+${
+  webContext
+    ? `<external_data source="live_web_search">
+${webContext}
+</external_data>
+
+Ground your report in the live search results above. Cite specific developments you found.`
+    : ""
+}
+
 Include 5-7 key trends, their impact levels, timeframes, and strategic implications.
 Write in prose, structured with clear sections. This will be shared with the founding team.`,
-      maxTokens: 3500,
+      maxTokens: 4000,
     });
 
     const approvalId = await this.createApproval({
       actionType: "share_trend_report",
       outputContent: result.content,
       ringLevel: 2,
-      confidence: 0.8,
+      confidence: webContext.length > 0 ? 0.9 : 0.8,
     });
 
     return {
       content: result.content.slice(0, 300) + "...",
-      summary: { approvalId, industry },
+      summary: { approvalId, industry, usedLiveSearch: webContext.length > 0 },
       approvalRequired: true,
       ringLevel: 2,
       actionType: "share_trend_report",
-      confidence: 0.8,
+      confidence: webContext.length > 0 ? 0.9 : 0.8,
     };
   }
 
@@ -238,4 +317,5 @@ Write in prose, structured with clear sections. This will be shared with the fou
 
 const RESEARCH_ROLE = `You synthesize market intelligence into actionable strategic insight.
 You separate signal from noise. You never speculate beyond what evidence supports.
-You cite your reasoning clearly so founders can evaluate your conclusions.`;
+You cite your reasoning clearly so founders can evaluate your conclusions.
+When given live web search results, prioritize recent data over your training knowledge.`;

@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { loadCompanyContext, formatContextForPrompt } from "../memory/memory-loader.ts";
 import { callModel, MODELS } from "../router/model-router.ts";
 import { captureOutcome } from "../goal/outcome-capturer.ts";
+import { validateCompanyId, auditLog } from "@mammoth/shared/security";
 import type { ModelId, ModelCallResult } from "../router/model-router.ts";
 import type { CompanyContext } from "../memory/memory-loader.ts";
 
@@ -44,13 +45,25 @@ export abstract class BaseAgent {
   }
 
   /**
-   * Entry point. Loads context, marks task running, executes, saves output.
+   * Entry point. Validates tenant isolation, loads context, marks task running, executes, saves output.
    */
   async run(
     runCtx: AgentRunContext,
     taskInput: AgentTaskInput
   ): Promise<AgentTaskOutput> {
+    // Hard tenant isolation check — malformed or injected companyId fails fast
+    validateCompanyId(runCtx.companyId);
+    validateCompanyId(runCtx.departmentId);
+
     this.runCtx = runCtx;
+
+    auditLog({
+      event: "data.read",
+      companyId: runCtx.companyId,
+      resourceType: "agent_run",
+      resourceId: runCtx.agentRunId,
+      actionType: taskInput.taskType,
+    });
 
     await this.markTaskRunning();
 
@@ -70,6 +83,13 @@ export abstract class BaseAgent {
         taskType: taskInput.taskType,
         output,
       });
+
+      // Non-blocking: notify Slack for Ring 1 auto-executed actions
+      if (!output.approvalRequired) {
+        void this.notifySlack(output).catch(() => {
+          // Slack notification failure must never fail the agent run
+        });
+      }
 
       return output;
     } catch (error) {
@@ -159,6 +179,43 @@ ${contextBlock}`;
    *
    * @returns The new approval's ID (UUID)
    */
+  /**
+   * Sends a Slack notification for Ring 1 (auto-executed) actions.
+   * Requires the company to have a connected Slack integration.
+   * Fires and forgets — never throws.
+   */
+  private async notifySlack(output: AgentTaskOutput): Promise<void> {
+    const { db: dbInstance, integrations } = await import("@mammoth/db");
+    const { eq: deq, and: dand } = await import("drizzle-orm");
+    const { sendApprovalToSlack } = await import("@mammoth/integrations/slack");
+    const { decryptToken } = await import("@mammoth/integrations/oauth");
+
+    const integration = await dbInstance.query.integrations.findFirst({
+      where: dand(
+        deq(integrations.companyId, this.runCtx.companyId),
+        deq(integrations.provider, "slack"),
+        deq(integrations.status, "connected")
+      ),
+      columns: { accessTokenEnc: true, metadata: true },
+    });
+
+    if (!integration?.accessTokenEnc) return;
+
+    const botToken = decryptToken(integration.accessTokenEnc);
+    const config = integration.metadata as unknown as { channel?: string } | null;
+    const channel = config?.channel ?? "#mammoth-updates";
+
+    await sendApprovalToSlack(botToken, channel, {
+      approvalId: "",
+      department: this.departmentName,
+      actionType: output.actionType,
+      ringLevel: output.ringLevel,
+      outputContent: `[Ring 1 — auto-executed]\n${output.content}`,
+      confidence: output.confidence,
+      expiresAt: null,
+    });
+  }
+
   protected async createApproval(options: {
     actionType: string;
     outputContent: string;
