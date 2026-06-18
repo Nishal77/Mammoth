@@ -53,7 +53,7 @@ const redis = new Redis({
 
 const DEPARTMENT_AGENT_MAP: Record<
   string,
-  () => { run: (ctx: import("@mammoth/agents").AgentRunContext, input: import("@mammoth/agents").AgentTaskInput) => Promise<AgentTaskOutput> }
+  () => { run: (ctx: import("@mammoth/agent-base").AgentRunContext, input: import("@mammoth/agent-base").AgentTaskInput) => Promise<AgentTaskOutput> }
 > = {
   ceo: () => new CeoBrainAgent(),
   marketing: () => new MarketingAgent(),
