@@ -1,0 +1,27 @@
+{
+  "name": "@mammoth/agent-support",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "zod": "^3.24.1",
+    "@mammoth/agent-base": "workspace:*",
+    "@mammoth/memory-database": "workspace:*",
+    "@mammoth/shared": "workspace:*",
+    "@mammoth/tool-slack": "workspace:*",
+    "@mammoth/tool-email": "workspace:*"
+  },
+  "devDependencies": {
+    "@mammoth/typescript-config": "workspace:*",
+    "typescript": "^5.7.3"
+  }
+}

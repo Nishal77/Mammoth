@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { Queue } from "bullmq";
-import { db, approvals, trustScores, checkAndPromoteTrustScore } from "@mammoth/db";
+import { db, approvals, trustScores, checkAndPromoteTrustScore } from "@mammoth/memory-database";
 import { eq, and, lt, desc } from "drizzle-orm";
 import { authenticate } from "../../middleware/authenticate.ts";
 import { requireCompanyAccess } from "../../middleware/require-company-access.ts";

@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { checkPlanAccess } from "@mammoth/integrations/billing";
-import type { PlanFeature } from "@mammoth/integrations/billing";
+import { checkPlanAccess } from "@mammoth/tool-billing";
+import type { PlanFeature } from "@mammoth/tool-billing";
 
 /**
  * Creates a Fastify preHandler that blocks requests if the company's plan

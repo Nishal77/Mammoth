@@ -1,4 +1,4 @@
-import { redis } from "@mammoth/db";
+import { redis } from "@mammoth/memory-database";
 import { randomBytes } from "crypto";
 
 const CONNECT_TOKEN_TTL_SECONDS = 60 * 10;

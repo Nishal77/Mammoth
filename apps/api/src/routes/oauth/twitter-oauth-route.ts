@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
-import { db, integrations } from "@mammoth/db";
-import { encryptToken } from "@mammoth/integrations/oauth";
+import { db, integrations } from "@mammoth/memory-database";
+import { encryptToken } from "@mammoth/tool-oauth";
 import { createLogger } from "@mammoth/observability/logger";
 import { authenticate } from "../../middleware/authenticate.ts";
 

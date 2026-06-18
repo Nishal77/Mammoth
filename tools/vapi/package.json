@@ -1,0 +1,23 @@
+{
+  "name": "@mammoth/tool-vapi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^3.24.1",
+    "@mammoth/shared": "workspace:*",
+    "@mammoth/observability": "workspace:*"
+  },
+  "devDependencies": {
+    "@mammoth/typescript-config": "workspace:*",
+    "typescript": "^5.7.3"
+  }
+}

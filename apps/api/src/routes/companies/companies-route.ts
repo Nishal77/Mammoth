@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
-import { db, companies, departments, companyGoals, briefings } from "@mammoth/db";
+import { db, companies, departments, companyGoals, briefings } from "@mammoth/memory-database";
 import { eq, isNull, and, desc } from "drizzle-orm";
-import { DEPARTMENT_NAMES } from "@mammoth/db/schema";
+import { DEPARTMENT_NAMES } from "@mammoth/memory-database/schema";
 import { authenticate } from "../../middleware/authenticate.ts";
 import { requireCompanyAccess } from "../../middleware/require-company-access.ts";
 import { generateCompanySlug } from "@mammoth/shared/utils";

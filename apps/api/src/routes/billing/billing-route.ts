@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { db, companies, users } from "@mammoth/db";
+import { db, companies, users } from "@mammoth/memory-database";
 import { eq } from "drizzle-orm";
 import { authenticate } from "../../middleware/authenticate.ts";
 import {
@@ -9,7 +9,7 @@ import {
   handleBillingWebhook,
   getDailyAiCost,
   checkDailyBudget,
-} from "@mammoth/integrations/billing";
+} from "@mammoth/tool-billing";
 
 const BILLING_WEBHOOK_SECRET = process.env["STRIPE_BILLING_WEBHOOK_SECRET"];
 const APP_URL = process.env["APP_URL"] ?? "http://localhost:3000";

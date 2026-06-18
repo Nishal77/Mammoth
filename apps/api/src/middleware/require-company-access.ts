@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { db, companies } from "@mammoth/db";
+import { db, companies } from "@mammoth/memory-database";
 import { eq, and, isNull } from "drizzle-orm";
 import { ForbiddenError, NotFoundError } from "@mammoth/shared/errors";
 

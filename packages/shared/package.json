@@ -9,7 +9,6 @@
     "./types": "./src/types/index.ts",
     "./events": "./src/events/index.ts",
     "./utils": "./src/utils/index.ts",
-    "./security": "./src/security/index.ts",
     "./secrets": "./src/secrets/index.ts"
   },
   "dependencies": {

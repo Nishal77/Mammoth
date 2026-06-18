@@ -1,15 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { db, integrations } from "@mammoth/db";
+import { db, integrations } from "@mammoth/memory-database";
 import { and, eq } from "drizzle-orm";
 import { authenticate } from "../../middleware/authenticate.ts";
 import { requireCompanyAccess } from "../../middleware/require-company-access.ts";
-import { encryptToken } from "@mammoth/integrations/oauth";
-import { syncHubspot } from "@mammoth/integrations/hubspot";
-import { verifySlackToken } from "@mammoth/integrations/slack";
-import { verifyGithubToken } from "@mammoth/integrations/github";
-import { verifyTwitterToken } from "@mammoth/integrations/twitter";
-import { isValidWebhookUrl } from "@mammoth/integrations/n8n";
+import { encryptToken } from "@mammoth/tool-oauth";
+import { syncHubspot } from "@mammoth/tool-crm";
+import { verifySlackToken } from "@mammoth/tool-slack";
+import { verifyGithubToken } from "@mammoth/tool-github";
+import { verifyTwitterToken } from "@mammoth/tool-twitter";
+import { isValidWebhookUrl } from "@mammoth/tool-n8n";
 
 const SUPPORTED_PROVIDERS = [
   "stripe", "hubspot", "github", "slack", "plausible",
@@ -340,7 +340,7 @@ async function upsertIntegration(
   metadata?: Record<string, unknown>
 ): Promise<void> {
   const encryptedToken = accessToken
-    ? (await import("@mammoth/integrations/oauth")).encryptToken(accessToken)
+    ? (await import("@mammoth/tool-oauth")).encryptToken(accessToken)
     : null;
 
   await db

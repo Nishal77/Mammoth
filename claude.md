@@ -1,3 +1,16 @@
+# MAMMOTH Monorepo Structure
+
+mammoth/
+├── agents/           @mammoth/agent-{name} — one package per AI department
+├── orchestrator/     @mammoth/orchestrator-{dispatcher,scheduler}
+├── memory/           @mammoth/memory-{database,vector,retrieval}
+├── tools/            @mammoth/tool-{oauth,email,linkedin,twitter,slack,github,crm,apollo,exa,vapi,n8n,billing}
+├── evaluations/      @mammoth/eval-{approval,policy}
+├── workers/          @mammoth/worker-{agent,browser,temporal}
+├── apps/             web, api, notifications
+├── packages/         observability, shared, config (cross-cutting only)
+└── infrastructure/   docker, k8s
+
 Not `agents/`, `prompts/`, `tools/` at the root with everything mixed in.
 
 5. Every folder that exports multiple things has an `index.ts` for clean re-exports.

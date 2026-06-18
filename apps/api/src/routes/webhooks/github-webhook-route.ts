@@ -1,10 +1,10 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Queue } from "bullmq";
-import { db, integrations, companies, departmentTasks } from "@mammoth/db";
+import { db, integrations, companies, departmentTasks } from "@mammoth/memory-database";
 import { eq, and } from "drizzle-orm";
-import { verifyGithubWebhookSignature } from "@mammoth/integrations/github";
-import type { AgentJobData } from "@mammoth/agents";
-import { QUEUE_NAMES } from "@mammoth/agents";
+import { verifyGithubWebhookSignature } from "@mammoth/tool-github";
+import type { AgentJobData } from "@mammoth/agent-base";
+import { QUEUE_NAMES } from "@mammoth/agent-base";
 import { createLogger } from "@mammoth/observability/logger";
 
 const log = createLogger("github-webhook");
