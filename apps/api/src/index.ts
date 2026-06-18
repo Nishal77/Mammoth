@@ -44,6 +44,7 @@ import { initSocketServer } from "./lib/socket.ts";
 import { toNodeHandler } from "better-auth/node";
 import { circuitBreakerRegistry } from "@mammoth/observability/circuit-breaker";
 import { observabilityRoute } from "./routes/observability/observability-route.ts";
+import { knowledgeRoute } from "./routes/knowledge/knowledge-route.ts";
 
 const PORT = Number(process.env["PORT"] ?? 4000);
 const HOST = process.env["HOST"] ?? "0.0.0.0";
@@ -131,6 +132,9 @@ await app.register(
   },
   { prefix: "/api/v1/companies/:companyId/metrics" }
 );
+
+// Knowledge base — upload SOPs, playbooks, pricing docs, etc.
+await app.register(knowledgeRoute, { prefix: "/api/v1" });
 
 // Onboarding (unauthenticated start, auth on step/complete)
 await app.register(onboardingRoute, { prefix: "/api/v1/onboarding" });

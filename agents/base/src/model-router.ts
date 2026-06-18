@@ -28,6 +28,7 @@ export type ModelCallResult = {
   completionTokens: number;
   costUsd: number;
   model: ModelId;
+  durationMs: number;
 };
 
 const MAX_AGENT_COST_PER_DAY_USD = Number(
@@ -90,12 +91,22 @@ async function recordCost(companyId: string, costUsd: number): Promise<void> {
  * @param options - Model, messages, and company context
  * @returns Structured result with content, tokens, and cost
  */
+/**
+ * Routes an LLM call to the correct provider and model.
+ * Checks cost cap before every call. Records spend and emits a structured LLM
+ * trace log (Langfuse-equivalent — queryable via log aggregation).
+ * durationMs is always populated so callers can store it in taskRuns.
+ *
+ * @param options - Model, messages, and company context
+ * @returns Structured result with content, tokens, cost, and duration
+ */
 export async function callModel(
   options: ModelCallOptions
 ): Promise<ModelCallResult> {
   await enforceCostedCap(options.companyId);
 
   const maxTokens = options.maxTokens ?? 4096;
+  const startedAt = Date.now();
 
   if (
     options.model === MODELS.SONNET ||
@@ -110,20 +121,30 @@ export async function callModel(
       messages,
     });
 
+    const durationMs = Date.now() - startedAt;
     const promptTokens = response.usage.input_tokens;
     const completionTokens = response.usage.output_tokens;
-    const costUsd = calculateLlmCostUsd(
-      options.model,
-      promptTokens,
-      completionTokens
-    );
+    const costUsd = calculateLlmCostUsd(options.model, promptTokens, completionTokens);
 
     await recordCost(options.companyId, costUsd);
 
     const content =
       response.content[0]?.type === "text" ? response.content[0].text : "";
 
-    return { content, promptTokens, completionTokens, costUsd, model: options.model };
+    // Structured LLM trace — aggregated by log collector (Grafana Loki / CloudWatch)
+    // Replaces Langfuse for environments where a separate SaaS is not desired.
+    console.log(JSON.stringify({
+      event: "llm.call",
+      model: options.model,
+      companyId: options.companyId,
+      promptTokens,
+      completionTokens,
+      costUsd: costUsd.toFixed(6),
+      durationMs,
+      stopReason: response.stop_reason,
+    }));
+
+    return { content, promptTokens, completionTokens, costUsd, model: options.model, durationMs };
   }
 
   if (options.model === MODELS.GPT4O_MINI) {
@@ -139,19 +160,27 @@ export async function callModel(
       ],
     });
 
+    const durationMs = Date.now() - startedAt;
     const promptTokens = response.usage?.prompt_tokens ?? 0;
     const completionTokens = response.usage?.completion_tokens ?? 0;
-    const costUsd = calculateLlmCostUsd(
-      options.model,
-      promptTokens,
-      completionTokens
-    );
+    const costUsd = calculateLlmCostUsd(options.model, promptTokens, completionTokens);
 
     await recordCost(options.companyId, costUsd);
 
     const content = response.choices[0]?.message.content ?? "";
 
-    return { content, promptTokens, completionTokens, costUsd, model: options.model };
+    console.log(JSON.stringify({
+      event: "llm.call",
+      model: options.model,
+      companyId: options.companyId,
+      promptTokens,
+      completionTokens,
+      costUsd: costUsd.toFixed(6),
+      durationMs,
+      stopReason: response.choices[0]?.finish_reason,
+    }));
+
+    return { content, promptTokens, completionTokens, costUsd, model: options.model, durationMs };
   }
 
   throw new Error(`Unsupported model: ${options.model}`);

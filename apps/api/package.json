@@ -15,6 +15,7 @@
     "@mammoth/shared": "workspace:*",
     "@mammoth/agent-base": "workspace:*",
     "@mammoth/eval-policy": "workspace:*",
+    "@mammoth/knowledge-ingestion": "workspace:*",
     "@mammoth/tool-oauth": "workspace:*",
     "@mammoth/tool-billing": "workspace:*",
     "@mammoth/tool-crm": "workspace:*",

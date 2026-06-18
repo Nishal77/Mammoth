@@ -10,7 +10,7 @@ export type EvalResult = {
   verdict: EvalVerdict;
   score: number;
   findings: EvalFinding[];
-  revisedContent?: string;
+  revisedContent?: string | undefined;
 };
 
 export type ContentType = "email" | "linkedin_post" | "blog_post" | "tweet" | "slack_message" | "generic";

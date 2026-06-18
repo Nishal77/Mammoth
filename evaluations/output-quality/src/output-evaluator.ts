@@ -50,8 +50,16 @@ export async function evaluateOutput(options: OutputEvalOptions): Promise<Output
     checkHallucination({ content, sourceContext }),
     checkBrandVoice({ content, brandVoiceGuidelines, contentType }),
     contentType === "email" && emailSubject
-      ? reviewEmail({ subject: emailSubject, body: content, recipientContext })
-      : reviewContent({ content, contentType, topic }),
+      ? reviewEmail({
+          subject: emailSubject,
+          body: content,
+          ...(recipientContext !== undefined ? { recipientContext } : {}),
+        })
+      : reviewContent({
+          content,
+          contentType,
+          ...(topic !== undefined ? { topic } : {}),
+        }),
   ]);
 
   const scores = [hallucinationResult.score, brandResult.score, contentResult.score];

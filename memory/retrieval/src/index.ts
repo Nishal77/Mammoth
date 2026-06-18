@@ -1,3 +1,3 @@
-export * from './memory-loader.js';
-export * from './memory-writer.js';
-export * from './semantic-search.js';
+export * from "./memory-loader.ts";
+export * from "./memory-writer.ts";
+export * from "./semantic-search.ts";

@@ -23,6 +23,8 @@
     "@mammoth/shared": "workspace:*",
     "@mammoth/observability": "workspace:*",
     "@mammoth/eval-policy": "workspace:*",
+    "@mammoth/eval-output-quality": "workspace:*",
+    "@mammoth/knowledge-ingestion": "workspace:*",
     "@mammoth/tool-slack": "workspace:*",
     "@mammoth/tool-oauth": "workspace:*"
   },

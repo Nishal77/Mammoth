@@ -56,7 +56,7 @@ verdict=pass if score >= 75. warn if 55-74. fail if < 55.`;
 export type ContentReviewOptions = {
   content: string;
   contentType: ContentType;
-  topic?: string;
+  topic?: string | undefined;
 };
 
 /**

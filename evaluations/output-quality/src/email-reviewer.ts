@@ -29,7 +29,7 @@ verdict=pass if score >= 75. warn if 55-74. fail if < 55.`;
 export type EmailReviewOptions = {
   subject: string;
   body: string;
-  recipientContext?: string;
+  recipientContext?: string | undefined;
 };
 
 /**

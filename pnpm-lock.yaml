@@ -26,9 +26,15 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.39.0
         version: 0.39.0
+      '@mammoth/eval-output-quality':
+        specifier: workspace:*
+        version: link:../../evaluations/output-quality
       '@mammoth/eval-policy':
         specifier: workspace:*
         version: link:../../evaluations/policy
+      '@mammoth/knowledge-ingestion':
+        specifier: workspace:*
+        version: link:../../knowledge/ingestion
       '@mammoth/memory-database':
         specifier: workspace:*
         version: link:../../memory/database
@@ -480,6 +486,9 @@ importers:
       '@mammoth/eval-policy':
         specifier: workspace:*
         version: link:../../evaluations/policy
+      '@mammoth/knowledge-ingestion':
+        specifier: workspace:*
+        version: link:../../knowledge/ingestion
       '@mammoth/memory-database':
         specifier: workspace:*
         version: link:../../memory/database
