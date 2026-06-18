@@ -33,7 +33,8 @@ type SalesTaskType = "lead_research" | "outreach_sequence" | "crm_update";
 
 /**
  * Sales Agent — lead research, outreach sequences, CRM operations.
- * All CRM writes are Ring 2 (4h veto). Lead research is Ring 1 (read-only).
+ * Lead research is Ring 1 (no approval needed, read-only action).
+ * Outreach sequences are Ring 2 (4h veto before emails are sent).
  */
 export class SalesAgent extends BaseAgent {
   constructor() {
@@ -55,9 +56,8 @@ export class SalesAgent extends BaseAgent {
       count?: number;
     };
 
-    const systemPrompt = this.buildSystemPrompt(SALES_ROLE);
     const result = await this.callLlm({
-      systemPrompt,
+      systemPrompt: this.buildSystemPrompt(SALES_ROLE),
       userMessage: `Research ${count} qualified leads matching this ICP: "${icp}".
 
 For each lead provide realistic data: name, title, company, company size, estimated email pattern, LinkedIn URL, ICP fit score 0-100, and 2-3 specific pain points.
@@ -83,26 +83,31 @@ Return ONLY this JSON:
 
     const parsed = this.parseLeads(result.content);
 
-    // Persist leads to DB — Ring 1 (no approval needed for research)
+    // Persist leads to DB — Ring 1, no approval gate for read-only research
     for (const lead of parsed.leads) {
-      await db.insert(leads).values({
-        companyId: this.runCtx.companyId,
-        firstName: lead.firstName,
-        lastName: lead.lastName,
-        email: lead.email ?? null,
-        title: lead.title,
-        companyName: lead.company,
-        companySize: lead.companySize ?? null,
-        linkedinUrl: lead.linkedinUrl ?? null,
-        icpScore: lead.icpScore.toString(),
-        enrichmentData: { painPoints: lead.painPoints },
-        source: "ai_research",
-        status: "new",
-      }).onConflictDoNothing();
+      await db
+        .insert(leads)
+        .values({
+          companyId: this.runCtx.companyId,
+          firstName: lead.firstName,
+          lastName: lead.lastName,
+          email: lead.email ?? null,
+          title: lead.title,
+          companyName: lead.company,
+          companySize: lead.companySize ?? null,
+          linkedinUrl: lead.linkedinUrl ?? null,
+          icpScore: lead.icpScore.toString(),
+          enrichmentData: { painPoints: lead.painPoints },
+          source: "ai_research",
+          status: "new",
+        })
+        .onConflictDoNothing();
     }
 
     return {
-      content: parsed.leads.map((l) => `${l.firstName} ${l.lastName} @ ${l.company} (ICP: ${l.icpScore}%)`).join("\n"),
+      content: parsed.leads
+        .map((l) => `${l.firstName} ${l.lastName} @ ${l.company} (ICP: ${l.icpScore}%)`)
+        .join("\n"),
       summary: { leadsFound: parsed.leads.length, leads: parsed.leads },
       approvalRequired: false,
       ringLevel: 1,
@@ -123,14 +128,15 @@ Return ONLY this JSON:
 
     if (!lead) throw new Error(`Lead ${leadId} not found`);
 
-    const systemPrompt = this.buildSystemPrompt(SALES_ROLE);
-    const painPoints = (lead.enrichmentData as { painPoints?: string[] } | null)?.painPoints ?? [];
+    const painPoints =
+      (lead.enrichmentData as { painPoints?: string[] } | null)?.painPoints ?? [];
+
     const leadContext = `Lead: ${lead.firstName} ${lead.lastName}, ${lead.title} at ${lead.companyName ?? "—"}
 Pain points: ${painPoints.join(", ") || "unknown"}
 ${context ?? ""}`;
 
     const result = await this.callLlm({
-      systemPrompt,
+      systemPrompt: this.buildSystemPrompt(SALES_ROLE),
       userMessage: `Write a 3-email cold outreach sequence + LinkedIn message for this lead.
 
 ${leadContext}
@@ -155,9 +161,26 @@ Return ONLY this JSON:
 
     const parsed = this.parseOutreach(result.content);
 
+    const outputContent = [
+      `To: ${lead.firstName} ${lead.lastName} <${lead.email ?? "—"}>`,
+      `Subject: ${parsed.subject}`,
+      "",
+      "---EMAIL 1---",
+      parsed.email1,
+      "",
+      "---EMAIL 2---",
+      parsed.email2,
+      "",
+      "---EMAIL 3---",
+      parsed.email3,
+      "",
+      "---LINKEDIN---",
+      parsed.linkedinMessage,
+    ].join("\n");
+
     const approvalId = await this.createApproval({
       actionType: "send_outreach_sequence",
-      outputContent: `To: ${lead.firstName} ${lead.lastName} <${lead.email ?? "—"}>\nSubject: ${parsed.subject}\n\n---EMAIL 1---\n${parsed.email1}\n\n---EMAIL 2---\n${parsed.email2}\n\n---EMAIL 3---\n${parsed.email3}\n\n---LINKEDIN---\n${parsed.linkedinMessage}`,
+      outputContent,
       ringLevel: 2,
       confidence: 0.82,
     });
@@ -196,44 +219,6 @@ Return ONLY this JSON:
         linkedinMessage: content.slice(0, 300),
       };
     }
-  }
-
-  private async createApproval(options: {
-    actionType: string;
-    outputContent: string;
-    ringLevel: 1 | 2 | 3;
-    confidence: number;
-  }): Promise<string> {
-    const { approvals, companies, publishNotification } = await import("@mammoth/db");
-    const { eq: eqOp } = await import("drizzle-orm");
-
-    const expiresAt = options.ringLevel === 2 ? new Date(Date.now() + 4 * 60 * 60 * 1000) : null;
-
-    const [approval] = await db
-      .insert(approvals)
-      .values({
-        companyId: this.runCtx.companyId,
-        taskId: this.runCtx.taskId,
-        department: "sales",
-        actionType: options.actionType,
-        ringLevel: options.ringLevel,
-        outputContent: options.outputContent,
-        confidence: options.confidence.toString(),
-        status: "pending",
-        expiresAt,
-      })
-      .returning({ id: approvals.id });
-
-    const company = await db.query.companies.findFirst({
-      where: eqOp(companies.id, this.runCtx.companyId),
-      columns: { ownerId: true },
-    });
-
-    if (company) {
-      await publishNotification({ type: "approval_created", userId: company.ownerId, approvalId: approval!.id });
-    }
-
-    return approval!.id;
   }
 }
 

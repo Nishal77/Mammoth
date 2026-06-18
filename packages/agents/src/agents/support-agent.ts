@@ -1,10 +1,9 @@
 import { z } from "zod";
-import { db, supportTickets, approvals, companies } from "@mammoth/db";
+import { db, supportTickets } from "@mammoth/db";
 import { eq } from "drizzle-orm";
 import { BaseAgent } from "../base/base-agent.ts";
 import { MODELS } from "../router/model-router.ts";
 import type { AgentTaskInput, AgentTaskOutput } from "../base/base-agent.ts";
-import { publishNotification } from "@mammoth/db";
 
 const TicketResolutionSchema = z.object({
   suggestedReply: z.string(),
@@ -178,40 +177,6 @@ Return ONLY this JSON:
     }
   }
 
-  private async createApproval(options: {
-    actionType: string;
-    outputContent: string;
-    ringLevel: 1 | 2 | 3;
-    confidence: number;
-  }): Promise<string> {
-    const expiresAt = options.ringLevel === 2 ? new Date(Date.now() + 4 * 60 * 60 * 1000) : null;
-
-    const [approval] = await db
-      .insert(approvals)
-      .values({
-        companyId: this.runCtx.companyId,
-        taskId: this.runCtx.taskId,
-        department: "support",
-        actionType: options.actionType,
-        ringLevel: options.ringLevel,
-        outputContent: options.outputContent,
-        confidence: options.confidence.toString(),
-        status: "pending",
-        expiresAt,
-      })
-      .returning({ id: approvals.id });
-
-    const company = await db.query.companies.findFirst({
-      where: eq(companies.id, this.runCtx.companyId),
-      columns: { ownerId: true },
-    });
-
-    if (company) {
-      await publishNotification({ type: "approval_created", userId: company.ownerId, approvalId: approval!.id });
-    }
-
-    return approval!.id;
-  }
 }
 
 const SUPPORT_ROLE = `You resolve customer issues with empathy and precision.

@@ -1,11 +1,17 @@
+import { createLogger } from "@mammoth/observability/logger";
 import { Queue } from "bullmq";
 import { db, companies } from "@mammoth/db";
-import { eq, isNull } from "drizzle-orm";
+import { isNull } from "drizzle-orm";
 import type { AgentJobData } from "@mammoth/agents";
 import { QUEUE_NAMES } from "@mammoth/agents";
 
+const log = createLogger("orchestrator");
+
 const CEO_BRAIN_INTERVAL_HOURS = 6;
 const CEO_BRAIN_INTERVAL_MS = CEO_BRAIN_INTERVAL_HOURS * 60 * 60 * 1000;
+
+// Re-scan for new companies every hour so newly-onboarded ones get scheduled.
+const COMPANY_RESCAN_INTERVAL_MS = 60 * 60 * 1000;
 
 const REDIS_CONNECTION = {
   host: process.env["REDIS_HOST"] ?? "localhost",
@@ -19,9 +25,9 @@ const agentQueue = new Queue<AgentJobData>(QUEUE_NAMES.AGENT_TASKS, {
 });
 
 /**
- * Schedules a CEO Brain run for every active company.
- * Uses per-company repeatable jobs so each company has its own cadence.
- * Safe to call on startup — BullMQ deduplicates by jobId.
+ * Registers a repeatable CEO Brain job for every active company.
+ * BullMQ deduplicates by jobId so calling this multiple times is safe —
+ * an existing job for a company will not be double-scheduled.
  */
 async function scheduleCeoBrainJobs(): Promise<void> {
   const activeCompanies = await db.query.companies.findMany({
@@ -29,7 +35,7 @@ async function scheduleCeoBrainJobs(): Promise<void> {
     columns: { id: true, name: true },
     with: {
       departments: {
-        where: (dept, { eq: eqOp }) => eqOp(dept.name, "ceo"),
+        where: (dept, { eq }) => eq(dept.name, "ceo"),
         columns: { id: true },
         limit: 1,
       },
@@ -38,8 +44,9 @@ async function scheduleCeoBrainJobs(): Promise<void> {
 
   for (const company of activeCompanies) {
     const ceoDept = company.departments[0];
+
     if (!ceoDept) {
-      console.warn(`[orchestrator] No CEO department for company ${company.id} — skipping`);
+      log.warn("No CEO department found — skipping", { companyId: company.id });
       continue;
     }
 
@@ -52,41 +59,41 @@ async function scheduleCeoBrainJobs(): Promise<void> {
       parameters: {},
     };
 
-    await agentQueue.add(
-      `ceo-brain:${company.id}`,
-      jobData,
-      {
-        repeat: { every: CEO_BRAIN_INTERVAL_MS },
-        jobId: `ceo-brain-repeatable:${company.id}`,
-        removeOnComplete: { count: 10 },
-        removeOnFail: { count: 20 },
-      }
-    );
+    await agentQueue.add(`ceo-brain:${company.id}`, jobData, {
+      repeat: { every: CEO_BRAIN_INTERVAL_MS },
+      jobId: `ceo-brain-repeatable:${company.id}`,
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 20 },
+    });
 
-    console.log(
-      `[orchestrator] CEO Brain scheduled for company "${company.name}" every ${CEO_BRAIN_INTERVAL_HOURS}h`
-    );
+    log.info("CEO Brain scheduled", {
+      companyId: company.id,
+      actionType: "ceo_brain_schedule",
+    });
   }
 }
 
 async function start(): Promise<void> {
   await scheduleCeoBrainJobs();
 
-  console.log(
-    `[orchestrator] CEO Brain scheduler running — interval: every ${CEO_BRAIN_INTERVAL_HOURS}h`
-  );
+  log.info(`CEO Brain scheduler active — interval: every ${CEO_BRAIN_INTERVAL_HOURS}h`);
 
-  // Re-check for new companies every hour in case new ones were onboarded
-  setInterval(() => void scheduleCeoBrainJobs().catch(console.error), 60 * 60 * 1000);
+  setInterval(
+    () =>
+      void scheduleCeoBrainJobs().catch((error: unknown) =>
+        log.errorWithStack("Failed to rescan companies", error as Error)
+      ),
+    COMPANY_RESCAN_INTERVAL_MS
+  );
 }
 
-start().catch((error) => {
-  console.error("[orchestrator] Failed to start:", error);
+start().catch((error: unknown) => {
+  log.errorWithStack("Orchestrator failed to start", error as Error);
   process.exit(1);
 });
 
 const shutdown = async (signal: string): Promise<void> => {
-  console.log(`[orchestrator] Received ${signal}, shutting down`);
+  log.info(`Received ${signal}, shutting down`);
   await agentQueue.close();
   process.exit(0);
 };

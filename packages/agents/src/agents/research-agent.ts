@@ -1,10 +1,8 @@
 import { z } from "zod";
-import { db, companyMemory, approvals, companies } from "@mammoth/db";
-import { eq } from "drizzle-orm";
+import { db, companyMemory } from "@mammoth/db";
 import { BaseAgent } from "../base/base-agent.ts";
 import { MODELS } from "../router/model-router.ts";
 import type { AgentTaskInput, AgentTaskOutput } from "../base/base-agent.ts";
-import { publishNotification } from "@mammoth/db";
 
 const CompetitorAnalysisSchema = z.object({
   competitors: z.array(
@@ -35,14 +33,15 @@ type ResearchTaskType = "competitor_intel" | "market_analysis" | "trend_report";
 
 /**
  * Research Agent — competitor intel, market analysis, trend reports.
- * Findings are Ring 1 (internal read/write to memory). Recommended pivots are Ring 3.
+ * Findings are written to company memory as Ring 1 (no approval, internal write).
+ * Recommended strategic pivots are Ring 3 (explicit founder sign-off required).
  */
 export class ResearchAgent extends BaseAgent {
   constructor() {
     super("Research", MODELS.SONNET);
   }
 
-  protected async execute(input: AgentTaskInput): Promise<AgentTaskOutput> {
+  protected override async execute(input: AgentTaskInput): Promise<AgentTaskOutput> {
     const taskType = input.taskType as ResearchTaskType;
 
     if (taskType === "competitor_intel") return this.analyzeCompetitors(input);
@@ -58,16 +57,15 @@ export class ResearchAgent extends BaseAgent {
       companyContext?: string;
     };
 
-    const systemPrompt = this.buildSystemPrompt(RESEARCH_ROLE);
-
     const result = await this.callLlm({
-      systemPrompt,
+      systemPrompt: this.buildSystemPrompt(RESEARCH_ROLE),
       userMessage: `Analyze these competitors and identify market gaps.
 
 Competitors: ${competitors.join(", ")}
 ${companyContext ? `Our positioning: ${companyContext}` : ""}
 
-For each competitor, analyze their current positioning, publicly known strengths/weaknesses, recent product or marketing moves, and threat level.
+For each competitor, analyze their current positioning, publicly known strengths/weaknesses,
+recent product or marketing moves, and threat level.
 Identify market gaps they are not addressing.
 Suggest positioning shifts we could make.
 
@@ -92,7 +90,7 @@ Return ONLY this JSON:
 
     const parsed = this.parseCompetitorAnalysis(result.content);
 
-    // Upsert into competitor memory — Ring 1 (research write, no approval)
+    // Persist to competitor memory — Ring 1 (internal write, no external action)
     await db
       .insert(companyMemory)
       .values({
@@ -107,7 +105,8 @@ Return ONLY this JSON:
         set: { value: JSON.stringify(parsed), updatedAt: new Date() },
       });
 
-    const summary = `Analyzed ${parsed.competitors.length} competitors. Found ${parsed.marketGaps.length} market gaps. ${parsed.competitors.filter((c) => c.threatLevel === "high").length} high-threat competitors.`;
+    const highThreatCount = parsed.competitors.filter((c) => c.threatLevel === "high").length;
+    const summary = `Analyzed ${parsed.competitors.length} competitors. Found ${parsed.marketGaps.length} market gaps. ${highThreatCount} high-threat competitors.`;
 
     return {
       content: summary,
@@ -122,16 +121,15 @@ Return ONLY this JSON:
   private async analyzeMarket(input: AgentTaskInput): Promise<AgentTaskOutput> {
     const { topic, context } = input.parameters as { topic: string; context?: string };
 
-    const systemPrompt = this.buildSystemPrompt(RESEARCH_ROLE);
-
     const result = await this.callLlm({
-      systemPrompt,
+      systemPrompt: this.buildSystemPrompt(RESEARCH_ROLE),
       userMessage: `Analyze this market trend and its strategic implications.
 
 Topic: "${topic}"
 ${context ? `Context: ${context}` : ""}
 
-Assess the trend's impact level, timeframe, and specific implications for our business. List concrete actions we could take.
+Assess the trend's impact level, timeframe, and specific implications for our business.
+List concrete actions we could take.
 
 Return ONLY this JSON:
 {
@@ -147,12 +145,14 @@ Return ONLY this JSON:
 
     const parsed = this.parseMarketAnalysis(result.content);
 
+    // Persist to market_intel memory — Ring 1 (internal write, no external action)
+    const memoryKey = `market_trend_${topic.toLowerCase().replace(/\s+/g, "_").slice(0, 50)}`;
     await db
       .insert(companyMemory)
       .values({
         companyId: this.runCtx.companyId,
-        memoryType: "competitor",
-        key: `market_trend_${topic.toLowerCase().replace(/\s+/g, "_").slice(0, 50)}`,
+        memoryType: "market_intel",
+        key: memoryKey,
         value: JSON.stringify(parsed),
         source: "research_agent",
       })
@@ -163,7 +163,11 @@ Return ONLY this JSON:
 
     return {
       content: `${parsed.trend} — ${parsed.impactLevel} impact over ${parsed.timeHorizon}.`,
-      summary: { trend: parsed.trend, impactLevel: parsed.impactLevel, actionsCount: parsed.recommendedActions.length },
+      summary: {
+        trend: parsed.trend,
+        impactLevel: parsed.impactLevel,
+        actionsCount: parsed.recommendedActions.length,
+      },
       approvalRequired: false,
       ringLevel: 1,
       actionType: "market_analysis",
@@ -177,10 +181,8 @@ Return ONLY this JSON:
       focusAreas?: string[];
     };
 
-    const systemPrompt = this.buildSystemPrompt(RESEARCH_ROLE);
-
     const result = await this.callLlm({
-      systemPrompt,
+      systemPrompt: this.buildSystemPrompt(RESEARCH_ROLE),
       userMessage: `Write a strategic trend report for the ${industry} industry.
 ${focusAreas ? `Focus areas: ${focusAreas.join(", ")}` : ""}
 
@@ -231,41 +233,6 @@ Write in prose, structured with clear sections. This will be shared with the fou
         sources: [],
       };
     }
-  }
-
-  private async createApproval(options: {
-    actionType: string;
-    outputContent: string;
-    ringLevel: 1 | 2 | 3;
-    confidence: number;
-  }): Promise<string> {
-    const expiresAt = options.ringLevel === 2 ? new Date(Date.now() + 4 * 60 * 60 * 1000) : null;
-
-    const [approval] = await db
-      .insert(approvals)
-      .values({
-        companyId: this.runCtx.companyId,
-        taskId: this.runCtx.taskId,
-        department: "research",
-        actionType: options.actionType,
-        ringLevel: options.ringLevel,
-        outputContent: options.outputContent,
-        confidence: options.confidence.toString(),
-        status: "pending",
-        expiresAt,
-      })
-      .returning({ id: approvals.id });
-
-    const company = await db.query.companies.findFirst({
-      where: eq(companies.id, this.runCtx.companyId),
-      columns: { ownerId: true },
-    });
-
-    if (company) {
-      await publishNotification({ type: "approval_created", userId: company.ownerId, approvalId: approval!.id });
-    }
-
-    return approval!.id;
   }
 }
 

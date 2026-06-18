@@ -1,4 +1,4 @@
-import { db, departmentTasks, taskRuns, agentRuns } from "@mammoth/db";
+import { db, departmentTasks, taskRuns, agentRuns, approvals, companies, publishNotification } from "@mammoth/db";
 import { eq, sql } from "drizzle-orm";
 import { loadCompanyContext, formatContextForPrompt } from "../memory/memory-loader.ts";
 import { callModel, MODELS } from "../router/model-router.ts";
@@ -150,6 +150,55 @@ YOU ARE FORBIDDEN FROM:
 
 COMPANY CONTEXT (trusted):
 ${contextBlock}`;
+  }
+
+  /**
+   * Creates an approval record and notifies the founder.
+   * Ring 2 approvals auto-expire after 4 hours.
+   * Ring 3 approvals require explicit founder action — no expiry.
+   *
+   * @returns The new approval's ID (UUID)
+   */
+  protected async createApproval(options: {
+    actionType: string;
+    outputContent: string;
+    ringLevel: 1 | 2 | 3;
+    confidence: number;
+  }): Promise<string> {
+    // Ring 2 auto-approves after 4 hours if founder takes no action.
+    // Ring 3 has no timeout — founder must explicitly approve.
+    const expiresAt =
+      options.ringLevel === 2 ? new Date(Date.now() + 4 * 60 * 60 * 1000) : null;
+
+    const [approval] = await db
+      .insert(approvals)
+      .values({
+        companyId: this.runCtx.companyId,
+        taskId: this.runCtx.taskId,
+        department: this.departmentName.toLowerCase(),
+        actionType: options.actionType,
+        ringLevel: options.ringLevel,
+        outputContent: options.outputContent,
+        confidence: options.confidence.toString(),
+        status: "pending",
+        expiresAt,
+      })
+      .returning({ id: approvals.id });
+
+    const company = await db.query.companies.findFirst({
+      where: eq(companies.id, this.runCtx.companyId),
+      columns: { ownerId: true },
+    });
+
+    if (company) {
+      await publishNotification({
+        type: "approval_created",
+        userId: company.ownerId,
+        approvalId: approval!.id,
+      });
+    }
+
+    return approval!.id;
   }
 
   private async markTaskRunning(): Promise<void> {

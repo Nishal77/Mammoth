@@ -1,10 +1,9 @@
 import { z } from "zod";
-import { db, approvals, companies, companyMemory } from "@mammoth/db";
+import { db, companyMemory } from "@mammoth/db";
 import { eq, and } from "drizzle-orm";
 import { BaseAgent } from "../base/base-agent.ts";
 import { MODELS } from "../router/model-router.ts";
 import type { AgentTaskInput, AgentTaskOutput } from "../base/base-agent.ts";
-import { publishNotification } from "@mammoth/db";
 
 const BlogPostSchema = z.object({
   title: z.string(),
@@ -28,14 +27,14 @@ type ContentTaskType = "blog_post" | "social_post" | "seo_audit" | "content_cale
 
 /**
  * Content Agent — blog posts, social media, SEO content.
- * All published content is Ring 2 (4h veto window).
+ * All published content is Ring 2 (4h veto window before it goes live).
  */
 export class ContentAgent extends BaseAgent {
   constructor() {
     super("Content", MODELS.HAIKU);
   }
 
-  protected async execute(input: AgentTaskInput): Promise<AgentTaskOutput> {
+  protected override async execute(input: AgentTaskInput): Promise<AgentTaskOutput> {
     const taskType = input.taskType as ContentTaskType;
 
     if (taskType === "blog_post") return this.writeBlogPost(input);
@@ -53,24 +52,23 @@ export class ContentAgent extends BaseAgent {
       tone?: string;
     };
 
+    // Load brand_voice memory for tone consistency across all content
     const brandMemory = await db.query.companyMemory.findFirst({
       where: and(
         eq(companyMemory.companyId, this.runCtx.companyId),
-        eq(companyMemory.memoryType, "brand")
+        eq(companyMemory.memoryType, "brand_voice")
       ),
     });
 
-    const systemPrompt = this.buildSystemPrompt(CONTENT_ROLE);
-
     const result = await this.callLlm({
-      systemPrompt,
+      systemPrompt: this.buildSystemPrompt(CONTENT_ROLE),
       userMessage: `Write a complete SEO-optimized blog post.
 
 Topic: "${topic}"
 ${keyword ? `Target keyword: "${keyword}"` : ""}
 ${audience ? `Audience: ${audience}` : ""}
 ${tone ? `Tone: ${tone}` : ""}
-${brandMemory ? `Brand voice: ${JSON.stringify(brandMemory.value).slice(0, 500)}` : ""}
+${brandMemory ? `Brand voice guidance: ${String(brandMemory.value).slice(0, 500)}` : ""}
 
 Requirements:
 - 1200-1800 words
@@ -119,25 +117,28 @@ Return ONLY this JSON:
       context?: string;
     };
 
+    // Load brand_voice memory for tone consistency
     const brandMemory = await db.query.companyMemory.findFirst({
       where: and(
         eq(companyMemory.companyId, this.runCtx.companyId),
-        eq(companyMemory.memoryType, "brand")
+        eq(companyMemory.memoryType, "brand_voice")
       ),
     });
 
-    const charLimits: Record<string, number> = { twitter: 280, linkedin: 3000, instagram: 2200 };
-
-    const systemPrompt = this.buildSystemPrompt(CONTENT_ROLE);
+    const charLimits: Record<string, number> = {
+      twitter: 280,
+      linkedin: 3000,
+      instagram: 2200,
+    };
 
     const result = await this.callLlm({
-      systemPrompt,
+      systemPrompt: this.buildSystemPrompt(CONTENT_ROLE),
       userMessage: `Write a ${platform} post.
 
 Topic: "${topic}"
 Character limit: ${charLimits[platform]}
 ${context ? `Context: ${context}` : ""}
-${brandMemory ? `Brand voice: ${JSON.stringify(brandMemory.value).slice(0, 300)}` : ""}
+${brandMemory ? `Brand voice guidance: ${String(brandMemory.value).slice(0, 300)}` : ""}
 
 Rules:
 - ${platform === "twitter" ? "Short, punchy, direct. One idea per tweet." : ""}
@@ -156,7 +157,6 @@ Return ONLY this JSON:
     });
 
     const parsed = this.parseSocialPost(result.content);
-
     const fullContent = `${parsed.content}\n\n${parsed.hashtags.map((h) => `#${h}`).join(" ")}`;
 
     const approvalId = await this.createApproval({
@@ -182,10 +182,8 @@ Return ONLY this JSON:
       focusThemes?: string[];
     };
 
-    const systemPrompt = this.buildSystemPrompt(CONTENT_ROLE);
-
     const result = await this.callLlm({
-      systemPrompt,
+      systemPrompt: this.buildSystemPrompt(CONTENT_ROLE),
       userMessage: `Create a ${weeks}-week content calendar.
 
 ${focusThemes ? `Focus themes: ${focusThemes.join(", ")}` : ""}
@@ -241,41 +239,6 @@ Return a structured plan in markdown.`,
     } catch {
       return { platform: "linkedin", content, hashtags: [] };
     }
-  }
-
-  private async createApproval(options: {
-    actionType: string;
-    outputContent: string;
-    ringLevel: 1 | 2 | 3;
-    confidence: number;
-  }): Promise<string> {
-    const expiresAt = options.ringLevel === 2 ? new Date(Date.now() + 4 * 60 * 60 * 1000) : null;
-
-    const [approval] = await db
-      .insert(approvals)
-      .values({
-        companyId: this.runCtx.companyId,
-        taskId: this.runCtx.taskId,
-        department: "content",
-        actionType: options.actionType,
-        ringLevel: options.ringLevel,
-        outputContent: options.outputContent,
-        confidence: options.confidence.toString(),
-        status: "pending",
-        expiresAt,
-      })
-      .returning({ id: approvals.id });
-
-    const company = await db.query.companies.findFirst({
-      where: eq(companies.id, this.runCtx.companyId),
-      columns: { ownerId: true },
-    });
-
-    if (company) {
-      await publishNotification({ type: "approval_created", userId: company.ownerId, approvalId: approval!.id });
-    }
-
-    return approval!.id;
   }
 }
 

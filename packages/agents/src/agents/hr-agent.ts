@@ -1,10 +1,9 @@
 import { z } from "zod";
-import { db, jobPostings, candidates, approvals, companies } from "@mammoth/db";
+import { db, jobPostings, candidates } from "@mammoth/db";
 import { eq } from "drizzle-orm";
 import { BaseAgent } from "../base/base-agent.ts";
 import { MODELS } from "../router/model-router.ts";
 import type { AgentTaskInput, AgentTaskOutput } from "../base/base-agent.ts";
-import { publishNotification } from "@mammoth/db";
 
 const JobDescriptionSchema = z.object({
   title: z.string(),
@@ -32,16 +31,16 @@ const CandidateScreeningSchema = z.object({
 type HrTaskType = "create_job_description" | "screen_candidate" | "draft_offer_letter";
 
 /**
- * HR Agent — job descriptions, candidate screening.
- * Job postings are Ring 2 (4h veto). Offer letters are Ring 3 (explicit approval).
- * Screening is Ring 1 (internal analysis, no external action).
+ * HR Agent — job descriptions, candidate screening, offer letters.
+ * Job postings are Ring 2 (4h veto). Offer letters are Ring 3 (must explicitly approve).
+ * Candidate screening is Ring 1 — internal analysis only, no external action.
  */
 export class HrAgent extends BaseAgent {
   constructor() {
     super("HR", MODELS.HAIKU);
   }
 
-  protected async execute(input: AgentTaskInput): Promise<AgentTaskOutput> {
+  protected override async execute(input: AgentTaskInput): Promise<AgentTaskOutput> {
     const taskType = input.taskType as HrTaskType;
 
     if (taskType === "create_job_description") return this.createJobDescription(input);
@@ -59,10 +58,8 @@ export class HrAgent extends BaseAgent {
       context?: string;
     };
 
-    const systemPrompt = this.buildSystemPrompt(HR_ROLE);
-
     const result = await this.callLlm({
-      systemPrompt,
+      systemPrompt: this.buildSystemPrompt(HR_ROLE),
       userMessage: `Write a job description for this role.
 
 Role: ${role}
@@ -105,7 +102,9 @@ Return ONLY this JSON:
       "",
       "## Nice to Have",
       ...parsed.niceToHaveRequirements.map((r) => `- ${r}`),
-    ].filter(Boolean).join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
 
     const approvalId = await this.createApproval({
       actionType: "publish_job_posting",
@@ -138,10 +137,8 @@ Return ONLY this JSON:
     if (!candidate) throw new Error(`Candidate ${candidateId} not found`);
     if (!jobPosting) throw new Error(`Job posting ${jobPostingId} not found`);
 
-    const systemPrompt = this.buildSystemPrompt(HR_ROLE);
-
     const result = await this.callLlm({
-      systemPrompt,
+      systemPrompt: this.buildSystemPrompt(HR_ROLE),
       userMessage: `Screen this candidate against the job requirements.
 
 <external_data source="job_description">
@@ -214,10 +211,8 @@ Return ONLY this JSON:
 
     if (!candidate) throw new Error(`Candidate ${candidateId} not found`);
 
-    const systemPrompt = this.buildSystemPrompt(HR_ROLE);
-
     const result = await this.callLlm({
-      systemPrompt,
+      systemPrompt: this.buildSystemPrompt(HR_ROLE),
       userMessage: `Draft a professional offer letter.
 
 Candidate: ${candidate.firstName} ${candidate.lastName}
@@ -231,6 +226,7 @@ Do not include clauses you are not certain are legally valid. Keep it concise.`,
       maxTokens: 1500,
     });
 
+    // Offer letters are Ring 3 — legal commitment, founder must explicitly approve
     const approvalId = await this.createApproval({
       actionType: "send_offer_letter",
       outputContent: result.content,
@@ -284,41 +280,6 @@ Do not include clauses you are not certain are legally valid. Keep it concise.`,
         suggestedInterviewQuestions: [],
       };
     }
-  }
-
-  private async createApproval(options: {
-    actionType: string;
-    outputContent: string;
-    ringLevel: 1 | 2 | 3;
-    confidence: number;
-  }): Promise<string> {
-    const expiresAt = options.ringLevel === 2 ? new Date(Date.now() + 4 * 60 * 60 * 1000) : null;
-
-    const [approval] = await db
-      .insert(approvals)
-      .values({
-        companyId: this.runCtx.companyId,
-        taskId: this.runCtx.taskId,
-        department: "hr",
-        actionType: options.actionType,
-        ringLevel: options.ringLevel,
-        outputContent: options.outputContent,
-        confidence: options.confidence.toString(),
-        status: "pending",
-        expiresAt,
-      })
-      .returning({ id: approvals.id });
-
-    const company = await db.query.companies.findFirst({
-      where: eq(companies.id, this.runCtx.companyId),
-      columns: { ownerId: true },
-    });
-
-    if (company) {
-      await publishNotification({ type: "approval_created", userId: company.ownerId, approvalId: approval!.id });
-    }
-
-    return approval!.id;
   }
 }
 

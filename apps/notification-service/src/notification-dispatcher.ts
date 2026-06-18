@@ -15,6 +15,15 @@ import {
   sendWhatsAppVetoAlert,
 } from "./whatsapp/whatsapp-client.ts";
 
+/**
+ * Shape of the notifyPrefs JSON column stored on users.
+ * telegram/whatsapp flags control which channel receives each notification type.
+ */
+type NotifyPrefs = {
+  telegram: boolean;
+  whatsapp: boolean;
+};
+
 export type NotificationPayload =
   | {
       type: "approval_created";
@@ -52,7 +61,8 @@ export async function dispatch(payload: NotificationPayload): Promise<void> {
 
   if (!user) return;
 
-  const prefs = user.notifyPrefs;
+  // notifyPrefs is stored as JSONB — cast to our known shape.
+  const prefs = user.notifyPrefs as NotifyPrefs;
   const usedChannels: Array<"telegram" | "whatsapp" | "email" | "in_app"> = [
     "in_app",
   ];
@@ -69,9 +79,9 @@ export async function dispatch(payload: NotificationPayload): Promise<void> {
 }
 
 async function dispatchApproval(
-  user: { telegramChatId: string | null; whatsappPhone: string | null; notifyPrefs: Record<string, unknown> },
+  user: { telegramChatId: string | null; whatsappPhone: string | null },
   approvalId: string,
-  prefs: { telegram: boolean; whatsapp: boolean },
+  prefs: NotifyPrefs,
   usedChannels: Array<"telegram" | "whatsapp" | "email" | "in_app">
 ): Promise<void> {
   const approval = await db.query.approvals.findFirst({
@@ -108,10 +118,10 @@ async function dispatchApproval(
 }
 
 async function dispatchVetoAlert(
-  user: { telegramChatId: string | null; whatsappPhone: string | null; notifyPrefs: Record<string, unknown> },
+  user: { telegramChatId: string | null; whatsappPhone: string | null },
   approvalId: string,
   minutesLeft: number,
-  prefs: { telegram: boolean; whatsapp: boolean },
+  prefs: NotifyPrefs,
   usedChannels: Array<"telegram" | "whatsapp" | "email" | "in_app">
 ): Promise<void> {
   const approval = await db.query.approvals.findFirst({
@@ -138,9 +148,9 @@ async function dispatchVetoAlert(
 }
 
 async function dispatchBriefing(
-  user: { telegramChatId: string | null; whatsappPhone: string | null; notifyPrefs: Record<string, unknown> },
+  user: { telegramChatId: string | null; whatsappPhone: string | null },
   briefingId: string,
-  prefs: { telegram: boolean; whatsapp: boolean },
+  prefs: NotifyPrefs,
   usedChannels: Array<"telegram" | "whatsapp" | "email" | "in_app">
 ): Promise<void> {
   const briefing = await db.query.briefings.findFirst({

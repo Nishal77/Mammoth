@@ -1,6 +1,4 @@
 import { z } from "zod";
-import { db, approvals, companies, publishNotification } from "@mammoth/db";
-import { eq } from "drizzle-orm";
 import { BaseAgent } from "../base/base-agent.ts";
 import { MODELS } from "../router/model-router.ts";
 import type { AgentTaskInput, AgentTaskOutput } from "../base/base-agent.ts";
@@ -23,9 +21,8 @@ type MarketingTaskType = "blog_post" | "social_post" | "email_newsletter";
 
 /**
  * Marketing Agent — generates SEO content and social posts.
- * Blog posts and newsletters are Ring 2 (4-hour veto window).
- * Social posts mentioning specific people/companies are Ring 2.
- * Internal drafts are Ring 1.
+ * Blog posts and social posts are Ring 2 (4-hour veto window before publish).
+ * All output goes to the approval queue — nothing posts automatically.
  */
 export class MarketingAgent extends BaseAgent {
   constructor() {
@@ -35,13 +32,8 @@ export class MarketingAgent extends BaseAgent {
   protected async execute(input: AgentTaskInput): Promise<AgentTaskOutput> {
     const taskType = input.taskType as MarketingTaskType;
 
-    if (taskType === "blog_post") {
-      return this.writeBlogPost(input);
-    }
-
-    if (taskType === "social_post") {
-      return this.writeSocialPosts(input);
-    }
+    if (taskType === "blog_post") return this.writeBlogPost(input);
+    if (taskType === "social_post") return this.writeSocialPosts(input);
 
     throw new Error(`Marketing agent does not handle task type: ${taskType}`);
   }
@@ -52,8 +44,9 @@ export class MarketingAgent extends BaseAgent {
       angle?: string;
     };
 
-    const systemPrompt = this.buildSystemPrompt(MARKETING_ROLE);
-    const userMessage = `Write a complete, SEO-optimized blog post.
+    const result = await this.callLlm({
+      systemPrompt: this.buildSystemPrompt(MARKETING_ROLE),
+      userMessage: `Write a complete, SEO-optimized blog post.
 
 Target keyword: "${keyword}"
 ${angle ? `Angle/thesis: ${angle}` : ""}
@@ -75,17 +68,12 @@ Return ONLY this JSON (no extra text):
   "targetKeyword": "${keyword}",
   "body": "full markdown body",
   "seoScore": 0-100
-}`;
-
-    const result = await this.callLlm({
-      systemPrompt,
-      userMessage,
+}`,
       maxTokens: 6000,
     });
 
     const parsed = this.parseBlogOutput(result.content);
 
-    // Blog posts require Ring 2 approval (4-hour veto before publish)
     const approvalId = await this.createApproval({
       actionType: "publish_blog_post",
       outputContent: `# ${parsed.title}\n\n${parsed.body}`,
@@ -116,8 +104,9 @@ Return ONLY this JSON (no extra text):
       sourceUrl?: string;
     };
 
-    const systemPrompt = this.buildSystemPrompt(MARKETING_ROLE);
-    const userMessage = `Write social media posts for both LinkedIn and Twitter/X.
+    const result = await this.callLlm({
+      systemPrompt: this.buildSystemPrompt(MARKETING_ROLE),
+      userMessage: `Write social media posts for both LinkedIn and Twitter/X.
 
 Topic: "${topic}"
 ${sourceUrl ? `Source URL to reference: ${sourceUrl}` : ""}
@@ -129,21 +118,26 @@ Return ONLY this JSON:
 {
   "linkedinPost": "full linkedin post text",
   "twitterPost": "tweet text under 280 chars"
-}`;
-
-    const result = await this.callLlm({
-      systemPrompt,
-      userMessage,
+}`,
       maxTokens: 2000,
     });
 
     const parsed = this.parseSocialOutput(result.content);
+    const outputContent = `LINKEDIN:\n${parsed.linkedinPost}\n\nTWITTER:\n${parsed.twitterPost}`;
+
+    const approvalId = await this.createApproval({
+      actionType: "publish_social_post",
+      outputContent,
+      ringLevel: 2,
+      confidence: 0.8,
+    });
 
     return {
-      content: `LINKEDIN:\n${parsed.linkedinPost}\n\nTWITTER:\n${parsed.twitterPost}`,
+      content: outputContent,
       summary: {
         linkedinLength: parsed.linkedinPost.length,
         twitterLength: parsed.twitterPost.length,
+        approvalId,
       },
       approvalRequired: true,
       ringLevel: 2,
@@ -180,50 +174,6 @@ Return ONLY this JSON:
         twitterPost: content.slice(0, 280),
       };
     }
-  }
-
-  private async createApproval(options: {
-    actionType: string;
-    outputContent: string;
-    ringLevel: 1 | 2 | 3;
-    confidence: number;
-  }): Promise<string> {
-    const expiresAt =
-      options.ringLevel === 2
-        ? new Date(Date.now() + 4 * 60 * 60 * 1000)
-        : null;
-
-    const [approval] = await db
-      .insert(approvals)
-      .values({
-        companyId: this.runCtx.companyId,
-        taskId: this.runCtx.taskId,
-        department: this.departmentName.toLowerCase(),
-        actionType: options.actionType,
-        ringLevel: options.ringLevel,
-        outputContent: options.outputContent,
-        confidence: options.confidence.toString(),
-        status: "pending",
-        expiresAt,
-      })
-      .returning({ id: approvals.id });
-
-    const approvalId = approval!.id;
-
-    const company = await db.query.companies.findFirst({
-      where: eq(companies.id, this.runCtx.companyId),
-      columns: { ownerId: true },
-    });
-
-    if (company) {
-      await publishNotification({
-        type: "approval_created",
-        userId: company.ownerId,
-        approvalId,
-      });
-    }
-
-    return approvalId;
   }
 }
 
