@@ -11,6 +11,7 @@ import {
 } from "@mammoth/shared/errors";
 import { generateCompanySlug } from "@mammoth/shared/utils";
 import { successResponse } from "@mammoth/shared/types";
+import { CompanyScheduler } from "@mammoth/orchestrator-scheduler";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 2; // 2 hours
 const SESSION_PREFIX = "onboarding:session:";
@@ -238,6 +239,11 @@ export async function onboardingRoute(app: FastifyInstance): Promise<void> {
 
       // Clean up session
       await redis.del(`${SESSION_PREFIX}${sessionId}`);
+
+      // Start autonomous scheduling — CEO Brain fires every 6h, Research every 12h, Finance every 1h
+      const scheduler = new CompanyScheduler();
+      await scheduler.startCompany(result.company.id);
+      await scheduler.close();
 
       return reply.status(201).send(successResponse(result));
     }
