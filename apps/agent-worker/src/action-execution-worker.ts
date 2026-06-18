@@ -18,6 +18,7 @@ import { fireOutboundWebhook, isValidWebhookUrl } from "@mammoth/integrations/n8
 const log = createLogger("action-executor");
 
 const EXECUTION_QUEUE_NAME = "approval:execute";
+const BROWSER_QUEUE_NAME = "browser:tasks";
 
 const REDIS_CONNECTION = {
   host: process.env["REDIS_HOST"] ?? "localhost",
@@ -285,7 +286,22 @@ async function dispatchLinkedInPost(
   });
 
   if (!result.posted) {
-    throw new Error(`LinkedIn post failed: ${result.reason}`);
+    // LinkedIn API failed — fall back to browser worker (Playwright session)
+    // so the post still goes out without requiring a retry approval.
+    log.warn("LinkedIn API failed, queuing browser fallback", {
+      companyId,
+      reason: result.reason,
+    });
+
+    const browserQueue = new Queue(BROWSER_QUEUE_NAME, { connection: REDIS_CONNECTION });
+    await browserQueue.add(
+      "linkedin_post",
+      { companyId, postText, type: "linkedin_post" },
+      { attempts: 2, backoff: { type: "fixed", delay: 30_000 } }
+    );
+
+    log.info("LinkedIn browser fallback queued", { companyId });
+    return;
   }
 
   log.info("LinkedIn post published", { companyId, postUrl: result.postUrl });

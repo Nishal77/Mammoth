@@ -36,6 +36,8 @@ import { stripeWebhookRoute } from "./routes/webhooks/stripe-webhook-route.ts";
 import { githubWebhookRoute } from "./routes/webhooks/github-webhook-route.ts";
 import { integrationsRoute } from "./routes/integrations/integrations-route.ts";
 import { billingRoute } from "./routes/billing/billing-route.ts";
+import { linkedinOAuthRoute } from "./routes/oauth/linkedin-oauth-route.ts";
+import { twitterOAuthRoute } from "./routes/oauth/twitter-oauth-route.ts";
 import { auth } from "./lib/auth.ts";
 import { initSocketServer } from "./lib/socket.ts";
 import { toNodeHandler } from "better-auth/node";
@@ -145,6 +147,10 @@ await app.register(
   },
   { prefix: "/api/v1/companies/:companyId/integrations" }
 );
+
+// OAuth redirect flows for social integrations
+await app.register(linkedinOAuthRoute, { prefix: "/api/v1/oauth/linkedin" });
+await app.register(twitterOAuthRoute, { prefix: "/api/v1/oauth/twitter" });
 
 // Stripe MRR webhook (one endpoint per company, identified by ?companyId=)
 await app.register(stripeWebhookRoute, { prefix: "/api/v1/webhooks/stripe" });

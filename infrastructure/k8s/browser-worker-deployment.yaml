@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: browser-worker
+  namespace: mammoth
+  labels:
+    app: browser-worker
+spec:
+  # Playwright instances are memory-heavy. Keep low and let HPA scale.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: browser-worker
+  template:
+    metadata:
+      labels:
+        app: browser-worker
+    spec:
+      containers:
+        - name: browser-worker
+          image: ghcr.io/mammoth/browser-worker:latest
+          envFrom:
+            - configMapRef:
+                name: mammoth-config
+            - secretRef:
+                name: mammoth-secrets
+          resources:
+            # Playwright + Chromium needs significant memory
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          # Chromium requires /dev/shm to be larger than the default 64Mi
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: "1Gi"

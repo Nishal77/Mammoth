@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temporal-worker
+  namespace: mammoth
+  labels:
+    app: temporal-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: temporal-worker
+  template:
+    metadata:
+      labels:
+        app: temporal-worker
+    spec:
+      containers:
+        - name: temporal-worker
+          image: ghcr.io/mammoth/temporal-worker:latest
+          envFrom:
+            - configMapRef:
+                name: mammoth-config
+            - secretRef:
+                name: mammoth-secrets
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"

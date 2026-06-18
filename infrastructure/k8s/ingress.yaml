@@ -1,0 +1,42 @@
+# Requires nginx ingress controller: kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+# TLS cert managed by cert-manager (https://cert-manager.io) — install separately.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mammoth-ingress
+  namespace: mammoth
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    # Rate limiting — 100 req/s per IP, burst 200
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - mammoth.ai
+        - api.mammoth.ai
+      secretName: mammoth-tls
+  rules:
+    - host: api.mammoth.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-service
+                port:
+                  number: 3000
+    - host: mammoth.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-service
+                port:
+                  number: 3000

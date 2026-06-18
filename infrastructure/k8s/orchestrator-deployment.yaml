@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+  namespace: mammoth
+  labels:
+    app: orchestrator
+spec:
+  # Single replica — orchestrator uses distributed locking so multi-replica is safe,
+  # but one is sufficient; scale if CEO Brain cycles pile up.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orchestrator
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+    spec:
+      containers:
+        - name: orchestrator
+          image: ghcr.io/mammoth/orchestrator:latest
+          envFrom:
+            - configMapRef:
+                name: mammoth-config
+            - secretRef:
+                name: mammoth-secrets
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

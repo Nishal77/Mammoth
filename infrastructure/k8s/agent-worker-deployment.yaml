@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-worker
+  namespace: mammoth
+  labels:
+    app: agent-worker
+spec:
+  # Start with 2 replicas — HPA scales up to 10 based on queue depth.
+  # Each replica processes at most BULLMQ_CONCURRENCY jobs in parallel (default 5).
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agent-worker
+  template:
+    metadata:
+      labels:
+        app: agent-worker
+    spec:
+      containers:
+        - name: agent-worker
+          image: ghcr.io/mammoth/agent-worker:latest
+          envFrom:
+            - configMapRef:
+                name: mammoth-config
+            - secretRef:
+                name: mammoth-secrets
+          env:
+            - name: BULLMQ_CONCURRENCY
+              value: "5"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "1Gi"
+          # No HTTP port — agent-worker is a BullMQ queue consumer, not a server.
+          # Liveness based on the worker's internal heartbeat via Redis.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-worker-service
+  namespace: mammoth
+spec:
+  # ClusterIP: None — no load-balancing needed, workers pull from queue themselves
+  clusterIP: None
+  selector:
+    app: agent-worker

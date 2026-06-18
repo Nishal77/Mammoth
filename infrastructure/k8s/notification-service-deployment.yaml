@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: mammoth
+  labels:
+    app: notification-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+    spec:
+      containers:
+        - name: notification-service
+          image: ghcr.io/mammoth/notification-service:latest
+          ports:
+            - containerPort: 3002
+          envFrom:
+            - configMapRef:
+                name: mammoth-config
+            - secretRef:
+                name: mammoth-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: mammoth
+spec:
+  selector:
+    app: notification-service
+  ports:
+    - port: 3002
+      targetPort: 3002

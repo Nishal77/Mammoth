@@ -115,6 +115,38 @@ services:
     profiles:
       - proxy
 
+  # Temporal server — needed for durable multi-step workflows (sales cycle, etc.)
+  # Start with: docker compose --profile workflows up temporal
+  temporal:
+    image: temporalio/auto-setup:1.24
+    container_name: mammoth_temporal
+    restart: unless-stopped
+    ports:
+      - "7233:7233"
+    environment:
+      DB: postgresql
+      DB_PORT: 5432
+      POSTGRES_USER: mammoth
+      POSTGRES_PWD: mammoth_dev
+      POSTGRES_SEEDS: postgres
+    depends_on:
+      - postgres
+    profiles:
+      - workflows
+
+  temporal-ui:
+    image: temporalio/ui:2.28
+    container_name: mammoth_temporal_ui
+    restart: unless-stopped
+    ports:
+      - "8088:8080"
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    depends_on:
+      - temporal
+    profiles:
+      - workflows
+
 volumes:
   postgres_data:
   redis_data:
