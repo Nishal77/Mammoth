@@ -674,6 +674,37 @@ importers:
         specifier: ^3.1.1
         version: 3.2.6(@types/node@22.19.21)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)
 
+  evaluations/output-quality:
+    dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.39.0
+        version: 0.39.0
+      '@mammoth/knowledge-ingestion':
+        specifier: workspace:*
+        version: link:../../knowledge/ingestion
+      '@mammoth/memory-retrieval':
+        specifier: workspace:*
+        version: link:../../memory/retrieval
+      '@mammoth/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@mammoth/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@mammoth/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/config/typescript-config
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.1.1
+        version: 3.2.6(@types/node@22.19.21)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)
+
   evaluations/policy:
     dependencies:
       '@mammoth/observability':
@@ -695,6 +726,37 @@ importers:
       vitest:
         specifier: ^3.1.1
         version: 3.2.6(@types/node@22.19.21)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)
+
+  knowledge/ingestion:
+    dependencies:
+      '@mammoth/memory-database':
+        specifier: workspace:*
+        version: link:../../memory/database
+      '@mammoth/memory-vector':
+        specifier: workspace:*
+        version: link:../../memory/vector
+      '@mammoth/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@mammoth/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      drizzle-orm:
+        specifier: ^0.38.3
+        version: 0.38.4(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@19.2.17)(kysely@0.29.2)(postgres@3.4.9)(react@19.2.7)
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@mammoth/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/config/typescript-config
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.19.21
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
 
   memory/database:
     dependencies:

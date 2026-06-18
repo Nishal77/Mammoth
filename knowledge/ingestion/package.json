@@ -1,0 +1,26 @@
+{
+  "name": "@mammoth/knowledge-ingestion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.38.3",
+    "zod": "^3.24.1",
+    "@mammoth/memory-database": "workspace:*",
+    "@mammoth/memory-vector": "workspace:*",
+    "@mammoth/shared": "workspace:*",
+    "@mammoth/observability": "workspace:*"
+  },
+  "devDependencies": {
+    "@mammoth/typescript-config": "workspace:*",
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.3"
+  }
+}

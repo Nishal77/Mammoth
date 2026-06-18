@@ -10,6 +10,21 @@ import {
 } from "drizzle-orm/pg-core";
 import { companies } from "./companies.ts";
 
+export const KNOWLEDGE_DOC_TYPES = [
+  "sop",
+  "playbook",
+  "product_doc",
+  "pricing",
+  "support_guide",
+  "sales_script",
+  "faq",
+  "policy",
+] as const;
+export type KnowledgeDocType = (typeof KNOWLEDGE_DOC_TYPES)[number];
+
+export const KNOWLEDGE_DOC_STATUSES = ["pending", "processing", "ready", "failed"] as const;
+export type KnowledgeDocStatus = (typeof KNOWLEDGE_DOC_STATUSES)[number];
+
 export const companyMemory = pgTable(
   "company_memory",
   {
@@ -27,6 +42,9 @@ export const companyMemory = pgTable(
         "market_intel",
         "product_lesson",
         "playbook_refinement",
+        "sop",
+        "pricing",
+        "decision_log",
       ],
     }).notNull(),
     key: text("key").notNull(),
@@ -76,3 +94,35 @@ export type MemoryType = CompanyMemory["memoryType"];
 
 export type MemoryEmbedding = typeof memoryEmbeddings.$inferSelect;
 export type NewMemoryEmbedding = typeof memoryEmbeddings.$inferInsert;
+
+/**
+ * Tracks uploaded knowledge documents.
+ * Each document is chunked, embedded, and stored in Qdrant under source="knowledge".
+ * Agents retrieve relevant chunks via semantic search at run time.
+ */
+export const knowledgeDocs = pgTable(
+  "knowledge_docs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    filename: text("filename").notNull(),
+    docType: text("doc_type", { enum: KNOWLEDGE_DOC_TYPES }).notNull(),
+    // Which department this doc is scoped to. "all" = every department can read it.
+    department: text("department").default("all").notNull(),
+    status: text("status", { enum: KNOWLEDGE_DOC_STATUSES }).default("pending").notNull(),
+    chunkCount: integer("chunk_count").default(0).notNull(),
+    sizeBytes: integer("size_bytes").default(0).notNull(),
+    errorMessage: text("error_message"),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("idx_knowledge_docs_company").on(table.companyId),
+    index("idx_knowledge_docs_company_type").on(table.companyId, table.docType),
+  ]
+);
+
+export type KnowledgeDoc = typeof knowledgeDocs.$inferSelect;
+export type NewKnowledgeDoc = typeof knowledgeDocs.$inferInsert;
