@@ -48,7 +48,6 @@ type DashboardData = {
 };
 
 export function DashboardClient() {
-  const [companyId, setCompanyId] = useState<string | null>(null);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +80,6 @@ export function DashboardClient() {
           return;
         }
 
-        setCompanyId(company.id);
         const rest = await loadDashboard(company.id);
         setDashboardData({ company, ...rest });
       } catch (err) {

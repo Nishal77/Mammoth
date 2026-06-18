@@ -1,6 +1,5 @@
-import { redirect } from "next/navigation";
+import { LandingPage } from "../components/landing/LandingPage.tsx";
 
-// Root → redirect to dashboard. Middleware handles auth gate.
 export default function RootPage() {
-  redirect("/dashboard");
+  return <LandingPage />;
 }

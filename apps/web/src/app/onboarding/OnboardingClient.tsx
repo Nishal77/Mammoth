@@ -60,7 +60,7 @@ export function OnboardingClient() {
         step: stepKey,
         ...body,
       });
-      const next = data.nextStep as Step;
+      const next = data.nextStep as Step | "complete";
       setStep(next === "complete" ? "connect" : next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save step");
