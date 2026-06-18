@@ -4,6 +4,7 @@ import { decryptToken } from "../oauth/token-encryptor.ts";
 import { fetchHubspotContacts, fetchHubspotDeals } from "./hubspot-client.ts";
 import type { HubspotContact, HubspotDeal } from "./hubspot-client.ts";
 import { mapHubspotStatusToLeadStatus } from "./hubspot-status-mapper.ts";
+import { circuitBreakerRegistry } from "@mammoth/observability/circuit-breaker";
 
 export type HubspotSyncResult = {
   contactsSynced: number;
@@ -53,10 +54,18 @@ export async function syncHubspot(companyId: string): Promise<HubspotSyncResult>
     return result;
   }
 
+  // Wrap HubSpot API calls in a circuit breaker.
+  // If the HubSpot API is down, the breaker opens after 5 failures and
+  // stops trying for 60s — prevents burning the daily cost cap on timeouts.
+  const hubspotBreaker = circuitBreakerRegistry.get("hubspot", {
+    failureThreshold: 5,
+    resetTimeoutMs: 60_000,
+  });
+
   // Sync contacts → leads
   let contacts: HubspotContact[] = [];
   try {
-    contacts = await fetchHubspotContacts(accessToken);
+    contacts = await hubspotBreaker.execute(() => fetchHubspotContacts(accessToken));
   } catch (error) {
     result.errors.push(
       `Contact fetch failed: ${error instanceof Error ? error.message : String(error)}`
@@ -83,7 +92,7 @@ export async function syncHubspot(companyId: string): Promise<HubspotSyncResult>
   // Sync closed-won deals → customers
   let deals: HubspotDeal[] = [];
   try {
-    deals = await fetchHubspotDeals(accessToken);
+    deals = await hubspotBreaker.execute(() => fetchHubspotDeals(accessToken));
   } catch (error) {
     result.errors.push(
       `Deal fetch failed: ${error instanceof Error ? error.message : String(error)}`

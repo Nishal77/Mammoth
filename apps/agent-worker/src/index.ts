@@ -1,3 +1,24 @@
+// Observability init must come first — before BullMQ workers are created —
+// so OTel can instrument Redis and the Sentry error handler is active.
+import { initSentry, captureError, flushSentry } from "@mammoth/observability/sentry";
+import { initTracing, shutdownTracing } from "@mammoth/observability/tracing";
+import { createLogger } from "@mammoth/observability/logger";
+import { publishToDlq } from "@mammoth/observability/dead-letter-queue";
+
+initSentry({
+  dsn: process.env["SENTRY_DSN"],
+  serviceName: "agent-worker",
+  environment: process.env["NODE_ENV"] ?? "development",
+});
+
+initTracing({
+  serviceName: "mammoth-agent-worker",
+  serviceVersion: process.env["SERVICE_VERSION"] ?? "0.0.1",
+  collectorUrl: process.env["OTEL_EXPORTER_OTLP_ENDPOINT"],
+});
+
+const log = createLogger("agent-worker");
+
 import type { Job } from "bullmq";
 import {
   createAgentWorker,
@@ -19,6 +40,15 @@ import {
   expiryWorker,
   registerExpiryCheckJob,
 } from "./approval-expiry-worker.ts";
+import Redis from "ioredis";
+
+// Shared Redis connection used for DLQ publishing.
+const redis = new Redis({
+  host: process.env["REDIS_HOST"] ?? "localhost",
+  port: Number(process.env["REDIS_PORT"] ?? 6379),
+  password: process.env["REDIS_PASSWORD"] ?? undefined,
+  maxRetriesPerRequest: null,
+});
 
 const DEPARTMENT_AGENT_MAP: Record<
   string,
@@ -39,11 +69,10 @@ async function processJob(job: Job<AgentJobData>): Promise<void> {
   const { companyId, departmentId, taskId, agentRunId, taskType, parameters } =
     job.data;
 
-  console.log(
-    `[worker] Processing job ${job.id} | company=${companyId} taskType=${taskType}`
-  );
+  // Bind all job identifiers to this log instance — every log line includes them.
+  const jobLog = log.withContext({ companyId, agentRunId, taskId, actionType: taskType });
+  jobLog.info(`Processing job ${job.id}`);
 
-  // Resolve department name from DB to pick the right agent
   const task = await db.query.departmentTasks.findFirst({
     where: eq(departmentTasks.id, taskId),
     with: {
@@ -99,34 +128,64 @@ async function processJob(job: Job<AgentJobData>): Promise<void> {
     });
   }
 
-  console.log(`[worker] Completed job ${job.id}`);
+  jobLog.info(`Completed job ${job.id}`);
 }
 
 const worker = createAgentWorker(processJob);
 
 worker.on("completed", (job) => {
-  console.log(`[worker] Job ${job.id} completed successfully`);
+  log.info(`Job completed`, { actionType: job.id ?? "unknown" });
 });
 
 worker.on("failed", (job, error) => {
-  console.error(`[worker] Job ${job?.id} failed: ${error.message}`);
+  const jobLog = log.withContext({
+    companyId: job?.data?.companyId,
+    agentRunId: job?.data?.agentRunId,
+    taskId: job?.data?.taskId,
+    actionType: job?.data?.taskType,
+  });
+
+  jobLog.errorWithStack(`Job failed after ${job?.attemptsMade ?? 0} attempts`, error);
+
+  // Send to Sentry so the team gets alerted.
+  captureError(error, {
+    jobId: job?.id ?? "unknown",
+    companyId: job?.data?.companyId ?? "unknown",
+    agentRunId: job?.data?.agentRunId ?? "unknown",
+    taskType: job?.data?.taskType ?? "unknown",
+    attemptsMade: job?.attemptsMade ?? 0,
+  });
+
+  // Push to DLQ so the job can be inspected and replayed later.
+  // Non-blocking — a DLQ publish failure should not crash the worker.
+  if (job) {
+    void publishToDlq(redis, QUEUE_NAMES.AGENT_TASKS, job, error).catch((dlqError) => {
+      log.errorWithStack("Failed to publish job to DLQ", dlqError as Error, {
+        jobId: job.id ?? "unknown",
+      });
+    });
+  }
 });
 
 worker.on("error", (error) => {
-  console.error("[worker] Worker error:", error);
+  log.errorWithStack("Worker-level error (connection issue)", error);
+  captureError(error, { type: "worker_error" });
 });
 
-// Register the repeatable expiry-check job (idempotent)
 await registerExpiryCheckJob();
 
-console.log(
-  `[worker] Agent worker started. Listening on queue: ${QUEUE_NAMES.AGENT_TASKS}`
-);
-console.log("[worker] Approval expiry worker running — checks every 5 minutes");
+log.info(`Agent worker started`, { queue: QUEUE_NAMES.AGENT_TASKS });
+log.info("Approval expiry worker running — checks every 5 minutes");
 
 const shutdown = async (signal: string): Promise<void> => {
-  console.log(`[worker] Received ${signal}, shutting down gracefully`);
-  await Promise.all([worker.close(), expiryWorker.close()]);
+  log.info(`Received ${signal}, shutting down gracefully`);
+  await Promise.all([
+    worker.close(),
+    expiryWorker.close(),
+    redis.quit(),
+    flushSentry(),
+    shutdownTracing(),
+  ]);
   process.exit(0);
 };
 

@@ -12,6 +12,7 @@
   "dependencies": {
     "@mammoth/agents": "workspace:*",
     "@mammoth/db": "workspace:*",
+    "@mammoth/observability": "workspace:*",
     "@mammoth/shared": "workspace:*",
     "bullmq": "^5.34.5",
     "ioredis": "^5.4.2"

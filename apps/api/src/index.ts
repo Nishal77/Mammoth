@@ -1,3 +1,23 @@
+// Observability must be initialised before any other imports so Sentry
+// and OpenTelemetry auto-instrumentation can patch http/pg/redis early.
+import { initSentry, flushSentry } from "@mammoth/observability/sentry";
+import { initTracing, shutdownTracing } from "@mammoth/observability/tracing";
+import { createLogger } from "@mammoth/observability/logger";
+
+initSentry({
+  dsn: process.env["SENTRY_DSN"],
+  serviceName: "api",
+  environment: process.env["NODE_ENV"] ?? "development",
+});
+
+initTracing({
+  serviceName: "mammoth-api",
+  serviceVersion: process.env["SERVICE_VERSION"] ?? "0.0.1",
+  collectorUrl: process.env["OTEL_EXPORTER_OTLP_ENDPOINT"],
+});
+
+const log = createLogger("api");
+
 import Fastify from "fastify";
 import fastifyCors from "@fastify/cors";
 import fastifyHelmet from "@fastify/helmet";
@@ -18,6 +38,8 @@ import { billingRoute } from "./routes/billing/billing-route.ts";
 import { auth } from "./lib/auth.ts";
 import { initSocketServer } from "./lib/socket.ts";
 import { toNodeHandler } from "better-auth/node";
+import { circuitBreakerRegistry } from "@mammoth/observability/circuit-breaker";
+import { observabilityRoute } from "./routes/observability/observability-route.ts";
 
 const PORT = Number(process.env["PORT"] ?? 4000);
 const HOST = process.env["HOST"] ?? "0.0.0.0";
@@ -60,9 +82,13 @@ app.all("/api/auth/*", async (request, reply) => {
   return handler(request.raw, reply.raw);
 });
 
-// Health check
+// Health check — includes circuit breaker states so ops can see degraded integrations
 app.get("/health", async (_request, reply) => {
-  return reply.send({ status: "ok", ts: Date.now() });
+  return reply.send({
+    status: "ok",
+    ts: Date.now(),
+    circuitBreakers: circuitBreakerRegistry.getAllStates(),
+  });
 });
 
 // Company-scoped routes
@@ -125,16 +151,20 @@ await app.register(stripeWebhookRoute, { prefix: "/api/v1/webhooks" });
 // Billing (MAMMOTH subscriptions — checkout, portal, usage, billing webhook)
 await app.register(billingRoute, { prefix: "/api/v1/billing" });
 
+// Internal observability — circuit breaker states, DLQ inspection and replay
+// Protect this prefix with a firewall rule in production (internal network only).
+await app.register(observabilityRoute, { prefix: "/internal" });
+
 // Start server
 const httpServer = await app.listen({ port: PORT, host: HOST });
 initSocketServer(app.server);
 
-app.log.info(`API listening on ${HOST}:${PORT}`);
+log.info("API started", { port: String(PORT), host: HOST });
 
-// Graceful shutdown
+// Graceful shutdown — flush Sentry events and OTel spans before exit
 const shutdown = async (signal: string): Promise<void> => {
-  app.log.info(`Received ${signal}, shutting down`);
-  await app.close();
+  log.info(`Received ${signal}, shutting down`);
+  await Promise.all([app.close(), flushSentry(), shutdownTracing()]);
   process.exit(0);
 };
 
