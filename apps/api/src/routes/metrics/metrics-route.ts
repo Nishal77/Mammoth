@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { db, metricsDaily } from "@mammoth/db";
+import { db, metricsDaily } from "@mammoth/memory-database";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { authenticate } from "../../middleware/authenticate.ts";
 import { requireCompanyAccess } from "../../middleware/require-company-access.ts";

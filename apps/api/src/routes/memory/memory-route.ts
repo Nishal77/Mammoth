@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { db, companyMemory } from "@mammoth/db";
+import { db, companyMemory } from "@mammoth/memory-database";
 import { eq, and, isNull, ilike, desc } from "drizzle-orm";
 import { authenticate } from "../../middleware/authenticate.ts";
 import { requireCompanyAccess } from "../../middleware/require-company-access.ts";

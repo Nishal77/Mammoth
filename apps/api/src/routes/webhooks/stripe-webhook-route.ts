@@ -3,7 +3,7 @@ import { z } from "zod";
 import {
   handleStripeWebhook,
   getStripeWebhookSecret,
-} from "@mammoth/integrations/stripe";
+} from "@mammoth/tool-billing";
 
 const companyIdSchema = z.object({
   companyId: z.string().uuid("companyId must be a valid UUID"),

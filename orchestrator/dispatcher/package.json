@@ -1,0 +1,26 @@
+{
+  "name": "@mammoth/orchestrator-dispatcher",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "bullmq": "^5.34.5",
+    "ioredis": "^5.4.2",
+    "zod": "^3.24.1",
+    "@mammoth/memory-database": "workspace:*",
+    "@mammoth/shared": "workspace:*",
+    "@mammoth/observability": "workspace:*"
+  },
+  "devDependencies": {
+    "@mammoth/typescript-config": "workspace:*",
+    "typescript": "^5.7.3"
+  }
+}

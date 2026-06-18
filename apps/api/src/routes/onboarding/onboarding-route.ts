@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { db, companies, departments, companyGoals } from "@mammoth/db";
+import { db, companies, departments, companyGoals } from "@mammoth/memory-database";
 import { eq, isNull, and } from "drizzle-orm";
-import { DEPARTMENT_NAMES } from "@mammoth/db/schema";
+import { DEPARTMENT_NAMES } from "@mammoth/memory-database/schema";
 import { redis } from "../../lib/redis.ts";
 import { authenticate } from "../../middleware/authenticate.ts";
 import {

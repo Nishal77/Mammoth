@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
-import { db, integrations } from "@mammoth/db";
-import { encryptToken } from "@mammoth/integrations/oauth";
-import { getLinkedInMemberId } from "@mammoth/integrations/linkedin";
+import { db, integrations } from "@mammoth/memory-database";
+import { encryptToken } from "@mammoth/tool-oauth";
+import { getLinkedInMemberId } from "@mammoth/tool-linkedin";
 import { createLogger } from "@mammoth/observability/logger";
 import { authenticate } from "../../middleware/authenticate.ts";
 

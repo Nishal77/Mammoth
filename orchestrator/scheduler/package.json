@@ -1,0 +1,29 @@
+{
+  "name": "@mammoth/orchestrator-scheduler",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "node-cron": "^3.0.3",
+    "@mammoth/orchestrator-dispatcher": "workspace:*",
+    "@mammoth/memory-database": "workspace:*",
+    "@mammoth/shared": "workspace:*",
+    "@mammoth/observability": "workspace:*"
+  },
+  "devDependencies": {
+    "@mammoth/typescript-config": "workspace:*",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.3"
+  }
+}

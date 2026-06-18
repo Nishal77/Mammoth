@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { db, users } from "@mammoth/db";
+import { db, users } from "@mammoth/memory-database";
 import { eq } from "drizzle-orm";
 import { authenticate } from "../../middleware/authenticate.ts";
 import { ValidationError, NotFoundError } from "@mammoth/shared/errors";
