@@ -12,17 +12,22 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@langchain/core": "^0.3.27",
+    "@langchain/langgraph": "^0.2.42",
     "bullmq": "^5.34.5",
     "ioredis": "^5.4.2",
     "drizzle-orm": "^0.38.3",
     "zod": "^3.24.1",
     "@mammoth/agent-base": "workspace:*",
+    "@mammoth/agent-executive": "workspace:*",
     "@mammoth/memory-database": "workspace:*",
+    "@mammoth/memory-retrieval": "workspace:*",
     "@mammoth/shared": "workspace:*",
     "@mammoth/observability": "workspace:*"
   },
   "devDependencies": {
     "@mammoth/typescript-config": "workspace:*",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^3.1.1"
   }
 }

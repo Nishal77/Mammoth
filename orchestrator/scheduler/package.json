@@ -15,15 +15,19 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "node-cron": "^3.0.3",
+    "bullmq": "^5.34.5",
+    "ioredis": "^5.4.2",
+    "drizzle-orm": "^0.38.3",
     "@mammoth/orchestrator-dispatcher": "workspace:*",
     "@mammoth/memory-database": "workspace:*",
+    "@mammoth/agent-base": "workspace:*",
     "@mammoth/shared": "workspace:*",
     "@mammoth/observability": "workspace:*"
   },
   "devDependencies": {
     "@mammoth/typescript-config": "workspace:*",
     "tsup": "^8.3.5",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^3.1.1"
   }
 }

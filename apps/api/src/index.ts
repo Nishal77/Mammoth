@@ -35,6 +35,7 @@ import { onboardingRoute } from "./routes/onboarding/onboarding-route.ts";
 import { notificationConnectRoute } from "./routes/users/notification-connect-route.ts";
 import { stripeWebhookRoute } from "./routes/webhooks/stripe-webhook-route.ts";
 import { githubWebhookRoute } from "./routes/webhooks/github-webhook-route.ts";
+import { crmWebhookRoute } from "./routes/webhooks/crm-webhook-route.ts";
 import { integrationsRoute } from "./routes/integrations/integrations-route.ts";
 import { billingRoute } from "./routes/billing/billing-route.ts";
 import { linkedinOAuthRoute } from "./routes/oauth/linkedin-oauth-route.ts";
@@ -159,6 +160,8 @@ await app.register(twitterOAuthRoute, { prefix: "/api/v1/oauth/twitter" });
 // Stripe MRR webhook (one endpoint per company, identified by ?companyId=)
 await app.register(stripeWebhookRoute, { prefix: "/api/v1/webhooks/stripe" });
 await app.register(githubWebhookRoute, { prefix: "/api/v1/webhooks/github" });
+// CRM webhook — HubSpot contact replies → Temporal leadResponded signal
+await app.register(crmWebhookRoute, { prefix: "/api/v1" });
 
 // Billing (MAMMOTH subscriptions — checkout, portal, usage, billing webhook)
 await app.register(billingRoute, { prefix: "/api/v1/billing" });

@@ -6,7 +6,6 @@ import { MODELS } from "@mammoth/agent-base";
 import { upsertMemory } from "@mammoth/memory-retrieval";
 import { updateGoalProgress } from "./goal-progress-tracker.ts";
 import { generateBriefing } from "./briefing-generator.ts";
-import { dispatchDepartmentTasks } from "@mammoth/orchestrator-dispatcher";
 import type { AgentTaskInput, AgentTaskOutput } from "@mammoth/agent-base";
 
 const CeoOutputSchema = z.object({
@@ -65,13 +64,9 @@ export class CeoBrainAgent extends BaseAgent {
     // Persist department priorities to memory — future agents read these as context
     await this.savePrioritiesToMemory(parsed.priorities);
 
-    // Dispatch tasks to each department based on CEO priorities
-    // Non-blocking — dispatch failure must not fail the CEO Brain run itself
-    void dispatchDepartmentTasks(this.runCtx.companyId, parsed.priorities).catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      // eslint-disable-next-line no-console
-      console.error("[ceo-brain] Department dispatch failed:", msg);
-    });
+    // Dispatch is handled by the LangGraph orchestration layer (cycle-runner.ts),
+    // not here — this agent only handles analysis and priority generation.
+    // When CEO Brain runs via the scheduler, the graph's dispatchNode fires BullMQ jobs.
 
     // Generate daily briefing (no-op if already done today)
     void generateBriefing(this.runCtx.companyId, "daily");

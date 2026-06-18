@@ -36,7 +36,9 @@
     "ioredis": "^5.4.1",
     "bullmq": "^5.34.7",
     "socket.io": "^4.8.1",
-    "@sentry/node": "^8.46.0"
+    "@sentry/node": "^8.46.0",
+    "@temporalio/client": "^1.11.4",
+    "@temporalio/workflow": "^1.11.4"
   },
   "devDependencies": {
     "@mammoth/typescript-config": "workspace:*",
