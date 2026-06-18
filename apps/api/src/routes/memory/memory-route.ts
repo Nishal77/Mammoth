@@ -1,7 +1,7 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db, companyMemory } from "@mammoth/memory-database";
-import { eq, and, isNull, ilike, desc } from "drizzle-orm";
+import { eq, and, ilike, desc } from "drizzle-orm";
 import { authenticate } from "../../middleware/authenticate.ts";
 import { requireCompanyAccess } from "../../middleware/require-company-access.ts";
 import {
@@ -39,13 +39,15 @@ const UpdateMemorySchema = z.object({
 });
 
 type CompanyParams = { Params: { companyId: string; memoryId?: string } };
+type CompanyWithTypeQuery = CompanyParams & { Querystring: { type?: string } };
+type CompanyWithSearchQuery = CompanyParams & { Querystring: { q?: string } };
 
 export async function memoryRoute(app: FastifyInstance): Promise<void> {
   // GET /companies/:companyId/memory
-  app.get(
+  app.get<CompanyWithTypeQuery>(
     "/",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<CompanyParams & { Querystring: { type?: string } }>, reply) => {
+    async (request, reply) => {
       const { type } = request.query;
 
       const where = type
@@ -65,10 +67,10 @@ export async function memoryRoute(app: FastifyInstance): Promise<void> {
   );
 
   // POST /companies/:companyId/memory
-  app.post(
+  app.post<CompanyParams>(
     "/",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<CompanyParams>, reply) => {
+    async (request, reply) => {
       const result = CreateMemorySchema.safeParse(request.body);
       if (!result.success) throw new ValidationError(result.error.message);
 
@@ -108,10 +110,10 @@ export async function memoryRoute(app: FastifyInstance): Promise<void> {
   );
 
   // PATCH /companies/:companyId/memory/:memoryId
-  app.patch(
+  app.patch<CompanyParams>(
     "/:memoryId",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<CompanyParams>, reply) => {
+    async (request, reply) => {
       const { memoryId } = request.params;
       if (!memoryId) throw new ValidationError("memoryId is required");
 
@@ -145,10 +147,10 @@ export async function memoryRoute(app: FastifyInstance): Promise<void> {
   );
 
   // DELETE /companies/:companyId/memory/:memoryId
-  app.delete(
+  app.delete<CompanyParams>(
     "/:memoryId",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<CompanyParams>, reply) => {
+    async (request, reply) => {
       const { memoryId } = request.params;
       if (!memoryId) throw new ValidationError("memoryId is required");
 
@@ -169,10 +171,10 @@ export async function memoryRoute(app: FastifyInstance): Promise<void> {
   );
 
   // GET /companies/:companyId/memory/search?q=...
-  app.get(
+  app.get<CompanyWithSearchQuery>(
     "/search",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<CompanyParams & { Querystring: { q?: string } }>, reply) => {
+    async (request, reply) => {
       const { q } = request.query;
       if (!q || q.trim().length < 2) {
         throw new ValidationError("Search query must be at least 2 characters");

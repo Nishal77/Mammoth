@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { db, metricsDaily } from "@mammoth/memory-database";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { authenticate } from "../../middleware/authenticate.ts";
@@ -13,10 +13,10 @@ type MetricsParams = {
 
 export async function metricsRoute(app: FastifyInstance): Promise<void> {
   // GET /companies/:companyId/metrics?from=YYYY-MM-DD&to=YYYY-MM-DD
-  app.get(
+  app.get<MetricsParams>(
     "/",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<MetricsParams>, reply) => {
+    async (request, reply) => {
       const { from, to } = request.query;
 
       const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -39,10 +39,10 @@ export async function metricsRoute(app: FastifyInstance): Promise<void> {
   );
 
   // GET /companies/:companyId/metrics/summary — latest row + 30d aggregates
-  app.get(
+  app.get<MetricsParams>(
     "/summary",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<MetricsParams>, reply) => {
+    async (request, reply) => {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const fromDate = thirtyDaysAgo.toISOString().slice(0, 10);

@@ -1,9 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import { circuitBreakerRegistry } from "@mammoth/observability/circuit-breaker";
-import { getDlqDepth, getDlqJobs } from "@mammoth/observability/dead-letter-queue";
-import { replayDlqJob } from "@mammoth/observability/dead-letter-queue";
-import { redis } from "../../lib/redis.ts";
+import { getDlqDepth, getDlqJobs, replayDlqJob } from "@mammoth/observability/dead-letter-queue";
 import { z } from "zod";
+
+const REDIS_CONNECTION = {
+  host: process.env["REDIS_HOST"] ?? "localhost",
+  port: Number(process.env["REDIS_PORT"] ?? 6379),
+  password: process.env["REDIS_PASSWORD"] ?? undefined,
+  maxRetriesPerRequest: null,
+} as const;
 
 const ReplayBodySchema = z.object({
   originalJobId: z.string().min(1),
@@ -36,7 +41,7 @@ export async function observabilityRoute(app: FastifyInstance): Promise<void> {
    * DLQ depth > 0 should trigger an alert — jobs are waiting for replay.
    */
   app.get("/dlq", async (_request, reply) => {
-    const depth = await getDlqDepth(redis);
+    const depth = await getDlqDepth(REDIS_CONNECTION);
     return reply.send({ depth });
   });
 
@@ -46,7 +51,7 @@ export async function observabilityRoute(app: FastifyInstance): Promise<void> {
    * Use this to understand WHY jobs are failing before replaying them.
    */
   app.get("/dlq/jobs", async (_request, reply) => {
-    const jobs = await getDlqJobs(redis);
+    const jobs = await getDlqJobs(REDIS_CONNECTION);
     return reply.send({ jobs });
   });
 
@@ -66,7 +71,7 @@ export async function observabilityRoute(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const replayed = await replayDlqJob(redis, parsed.data.originalJobId);
+    const replayed = await replayDlqJob(REDIS_CONNECTION, parsed.data.originalJobId);
     if (!replayed) {
       return reply.status(404).send({
         error: `Job ${parsed.data.originalJobId} not found in DLQ`,

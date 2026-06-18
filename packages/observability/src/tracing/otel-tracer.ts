@@ -40,9 +40,9 @@ export function initTracing(config: OtelConfig): void {
 
   sdk = new NodeSDK({
     resource,
-    traceExporter: config.collectorUrl
-      ? new OTLPTraceExporter({ url: config.collectorUrl })
-      : undefined,
+    ...(config.collectorUrl
+      ? { traceExporter: new OTLPTraceExporter({ url: config.collectorUrl }) }
+      : {}),
     instrumentations: [
       getNodeAutoInstrumentations({
         // Filesystem instrumentation is too noisy in practice.

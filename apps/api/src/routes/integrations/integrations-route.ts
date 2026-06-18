@@ -4,7 +4,6 @@ import { db, integrations } from "@mammoth/memory-database";
 import { and, eq } from "drizzle-orm";
 import { authenticate } from "../../middleware/authenticate.ts";
 import { requireCompanyAccess } from "../../middleware/require-company-access.ts";
-import { encryptToken } from "@mammoth/tool-oauth";
 import { syncHubspot } from "@mammoth/tool-crm";
 import { verifySlackToken } from "@mammoth/tool-slack";
 import { verifyGithubToken } from "@mammoth/tool-github";

@@ -1,5 +1,4 @@
 import { betterAuth } from "better-auth";
-import { db } from "@mammoth/memory-database/client";
 
 if (!process.env["BETTER_AUTH_SECRET"]) {
   throw new Error("BETTER_AUTH_SECRET environment variable is required");

@@ -1,7 +1,6 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db, companies, departments, companyGoals } from "@mammoth/memory-database";
-import { eq, isNull, and } from "drizzle-orm";
 import { DEPARTMENT_NAMES } from "@mammoth/memory-database/schema";
 import { redis } from "../../lib/redis.ts";
 import { authenticate } from "../../middleware/authenticate.ts";
@@ -85,10 +84,10 @@ type OnboardingParams = { Params: { sessionId?: string } };
 
 export async function onboardingRoute(app: FastifyInstance): Promise<void> {
   // POST /onboarding/start
-  app.post(
+  app.post<OnboardingParams>(
     "/start",
     { preHandler: [authenticate] },
-    async (request: FastifyRequest<OnboardingParams>, reply) => {
+    async (request, reply) => {
       const result = StartOnboardingSchema.safeParse(request.body);
       if (!result.success) throw new ValidationError(result.error.message);
 
@@ -111,10 +110,10 @@ export async function onboardingRoute(app: FastifyInstance): Promise<void> {
   );
 
   // PATCH /onboarding/:sessionId/step
-  app.patch(
+  app.patch<OnboardingParams>(
     "/:sessionId/step",
     { preHandler: [authenticate] },
-    async (request: FastifyRequest<OnboardingParams>, reply) => {
+    async (request, reply) => {
       const { sessionId } = request.params;
       if (!sessionId) throw new ValidationError("sessionId is required");
 
@@ -158,10 +157,10 @@ export async function onboardingRoute(app: FastifyInstance): Promise<void> {
   );
 
   // POST /onboarding/:sessionId/complete — creates company + departments + first goal
-  app.post(
+  app.post<OnboardingParams>(
     "/:sessionId/complete",
     { preHandler: [authenticate] },
-    async (request: FastifyRequest<OnboardingParams>, reply) => {
+    async (request, reply) => {
       const { sessionId } = request.params;
       if (!sessionId) throw new ValidationError("sessionId is required");
 
@@ -210,7 +209,7 @@ export async function onboardingRoute(app: FastifyInstance): Promise<void> {
           DEPARTMENT_NAMES.map((name) => ({
             companyId: company.id,
             name,
-            status: "idle" as const,
+            status: "inactive" as const,
             ringDefaults: { defaultRing: 2 as const },
             playbookVersion: 1,
           }))

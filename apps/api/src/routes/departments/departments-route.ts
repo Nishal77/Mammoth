@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db, departments, departmentTasks } from "@mammoth/memory-database";
 import { eq, and, desc } from "drizzle-orm";
@@ -38,10 +38,10 @@ type DeptParams = {
 
 export async function departmentsRoute(app: FastifyInstance): Promise<void> {
   // GET /companies/:companyId/departments
-  app.get(
+  app.get<DeptParams>(
     "/",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<DeptParams>, reply) => {
+    async (request, reply) => {
       const rows = await db.query.departments.findMany({
         where: eq(departments.companyId, request.company.id),
         orderBy: (d, { asc }) => [asc(d.name)],
@@ -52,10 +52,10 @@ export async function departmentsRoute(app: FastifyInstance): Promise<void> {
   );
 
   // PATCH /companies/:companyId/departments/:deptName
-  app.patch(
+  app.patch<DeptParams>(
     "/:deptName",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<DeptParams>, reply) => {
+    async (request, reply) => {
       const { deptName } = request.params;
 
       if (!deptName || !VALID_DEPT_NAMES.includes(deptName as DeptName)) {
@@ -74,7 +74,7 @@ export async function departmentsRoute(app: FastifyInstance): Promise<void> {
         const current = await db.query.departments.findFirst({
           where: and(
             eq(departments.companyId, request.company.id),
-            eq(departments.name, deptName)
+            eq(departments.name, deptName as DeptName)
           ),
           columns: { playbookVersion: true },
         });
@@ -90,12 +90,11 @@ export async function departmentsRoute(app: FastifyInstance): Promise<void> {
           }),
           ...(ringDefaults !== undefined && { ringDefaults }),
           ...(config !== undefined && { config }),
-          updatedAt: new Date(),
         })
         .where(
           and(
             eq(departments.companyId, request.company.id),
-            eq(departments.name, deptName)
+            eq(departments.name, deptName as DeptName)
           )
         )
         .returning();
@@ -107,10 +106,10 @@ export async function departmentsRoute(app: FastifyInstance): Promise<void> {
   );
 
   // GET /companies/:companyId/departments/:deptName/tasks
-  app.get(
+  app.get<DeptParams>(
     "/:deptName/tasks",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<DeptParams>, reply) => {
+    async (request, reply) => {
       const { deptName } = request.params;
       if (!deptName) throw new ValidationError("deptName is required");
 
@@ -120,7 +119,7 @@ export async function departmentsRoute(app: FastifyInstance): Promise<void> {
       const dept = await db.query.departments.findFirst({
         where: and(
           eq(departments.companyId, request.company.id),
-          eq(departments.name, deptName)
+          eq(departments.name, deptName as DeptName)
         ),
         columns: { id: true },
       });
@@ -142,10 +141,10 @@ export async function departmentsRoute(app: FastifyInstance): Promise<void> {
   );
 
   // GET /companies/:companyId/departments/:deptName/outputs
-  app.get(
+  app.get<DeptParams>(
     "/:deptName/outputs",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<DeptParams>, reply) => {
+    async (request, reply) => {
       const { deptName } = request.params;
       if (!deptName) throw new ValidationError("deptName is required");
 
@@ -154,7 +153,7 @@ export async function departmentsRoute(app: FastifyInstance): Promise<void> {
       const dept = await db.query.departments.findFirst({
         where: and(
           eq(departments.companyId, request.company.id),
-          eq(departments.name, deptName)
+          eq(departments.name, deptName as DeptName)
         ),
         columns: { id: true },
       });

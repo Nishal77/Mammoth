@@ -11,7 +11,7 @@ export async function authenticate(
   reply: FastifyReply
 ): Promise<void> {
   const session = await auth.api.getSession({
-    headers: request.headers as Headers,
+    headers: request.headers as unknown as Headers,
   });
 
   if (!session?.user) {

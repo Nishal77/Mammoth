@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { db, integrations } from "@mammoth/memory-database";
 import { encryptToken } from "@mammoth/tool-oauth";
@@ -28,10 +28,10 @@ const callbackQuerySchema = z.object({
  */
 export async function linkedinOAuthRoute(app: FastifyInstance): Promise<void> {
   // GET /authorize?companyId=xxx — initiates OAuth redirect
-  app.get(
+  app.get<{ Querystring: { companyId: string } }>(
     "/authorize",
     { preHandler: [authenticate] },
-    async (request: FastifyRequest<{ Querystring: { companyId: string } }>, reply: FastifyReply) => {
+    async (request, reply) => {
       const { companyId } = request.query;
       if (!companyId) {
         return reply.status(400).send({ error: "companyId required", code: "MISSING_PARAM" });
@@ -60,9 +60,9 @@ export async function linkedinOAuthRoute(app: FastifyInstance): Promise<void> {
   );
 
   // GET /callback — LinkedIn redirects here with ?code=&state=
-  app.get(
+  app.get<{ Querystring: Record<string, string> }>(
     "/callback",
-    async (request: FastifyRequest<{ Querystring: Record<string, string> }>, reply: FastifyReply) => {
+    async (request, reply) => {
       const query = callbackQuerySchema.safeParse(request.query);
 
       if (!query.success || query.data.error) {

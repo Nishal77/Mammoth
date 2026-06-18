@@ -19,6 +19,7 @@ initTracing({
 const log = createLogger("api");
 
 import Fastify from "fastify";
+import type { Server as HttpServer } from "node:http";
 import fastifyCors from "@fastify/cors";
 import fastifyHelmet from "@fastify/helmet";
 import fastifyCookie from "@fastify/cookie";
@@ -50,10 +51,9 @@ const HOST = process.env["HOST"] ?? "0.0.0.0";
 const app = Fastify({
   logger: {
     level: process.env["LOG_LEVEL"] ?? "info",
-    transport:
-      process.env["NODE_ENV"] !== "production"
-        ? { target: "pino-pretty", options: { colorize: true } }
-        : undefined,
+    ...(process.env["NODE_ENV"] !== "production"
+      ? { transport: { target: "pino-pretty", options: { colorize: true } } }
+      : {}),
   },
   trustProxy: true,
 });
@@ -164,8 +164,8 @@ await app.register(billingRoute, { prefix: "/api/v1/billing" });
 await app.register(observabilityRoute, { prefix: "/internal" });
 
 // Start server
-const httpServer = await app.listen({ port: PORT, host: HOST });
-initSocketServer(app.server);
+await app.listen({ port: PORT, host: HOST });
+initSocketServer(app.server as unknown as HttpServer);
 
 log.info("API started", { port: String(PORT), host: HOST });
 

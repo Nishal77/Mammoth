@@ -8,10 +8,10 @@ import { ForbiddenError, NotFoundError } from "@mammoth/shared/errors";
  * Must run after `authenticate`. Attaches company to request.company.
  */
 export async function requireCompanyAccess(
-  request: FastifyRequest<{ Params: { companyId: string } }>,
+  request: FastifyRequest,
   reply: FastifyReply
 ): Promise<void> {
-  const { companyId } = request.params;
+  const { companyId } = request.params as { companyId: string };
 
   const company = await db.query.companies.findFirst({
     where: and(

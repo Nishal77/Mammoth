@@ -58,7 +58,7 @@ export function initSocketServer(httpServer: HttpServer): SocketServer {
  * Subscribes to Redis pub/sub for agent-worker events.
  * Agent-worker publishes to `socket:events:{companyId}`; this relays to Socket.io rooms.
  */
-function subscribeToAgentEvents(socketServer: SocketServer): void {
+function subscribeToAgentEvents(_socketServer: SocketServer): void {
   if (!process.env["REDIS_URL"]) return;
 
   const subscriber = new Redis(process.env["REDIS_URL"]);

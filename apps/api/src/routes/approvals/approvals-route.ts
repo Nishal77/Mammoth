@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { Queue } from "bullmq";
 import { db, approvals, trustScores, checkAndPromoteTrustScore } from "@mammoth/memory-database";
@@ -46,10 +46,10 @@ async function expireStalePendingApprovals(companyId: string): Promise<void> {
 
 export async function approvalsRoute(app: FastifyInstance): Promise<void> {
   // GET /companies/:companyId/approvals
-  app.get(
+  app.get<CompanyParams>(
     "/",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<CompanyParams>, reply) => {
+    async (request, reply) => {
       // Lazily expire stale approvals on read
       await expireStalePendingApprovals(request.company.id);
 
@@ -59,7 +59,7 @@ export async function approvalsRoute(app: FastifyInstance): Promise<void> {
         limit: 50,
         with: {
           task: {
-            columns: { id: true, taskType: true, department: true },
+            columns: { id: true, taskType: true, departmentId: true },
           },
         },
       });
@@ -69,10 +69,10 @@ export async function approvalsRoute(app: FastifyInstance): Promise<void> {
   );
 
   // GET /companies/:companyId/approvals/:approvalId
-  app.get(
+  app.get<CompanyParams>(
     "/:approvalId",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<CompanyParams>, reply) => {
+    async (request, reply) => {
       await expireStalePendingApprovals(request.company.id);
 
       const { approvalId } = request.params;
@@ -95,10 +95,10 @@ export async function approvalsRoute(app: FastifyInstance): Promise<void> {
   );
 
   // POST /companies/:companyId/approvals/:approvalId/resolve
-  app.post(
+  app.post<CompanyParams>(
     "/:approvalId/resolve",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<CompanyParams>, reply) => {
+    async (request, reply) => {
       const { approvalId } = request.params;
       if (!approvalId) throw new ValidationError("approvalId is required");
 

@@ -1,7 +1,7 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db, companyGoals } from "@mammoth/memory-database";
-import { eq, and, isNull, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { authenticate } from "../../middleware/authenticate.ts";
 import { requireCompanyAccess } from "../../middleware/require-company-access.ts";
 import { NotFoundError, ValidationError } from "@mammoth/shared/errors";
@@ -21,7 +21,7 @@ const UpdateGoalSchema = z.object({
   currentValue: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
   deadline: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   status: z
-    .enum(["active", "paused", "completed", "abandoned"])
+    .enum(["active", "paused", "achieved", "abandoned"])
     .optional(),
 });
 
@@ -29,15 +29,12 @@ type GoalParams = { Params: { companyId: string; goalId?: string } };
 
 export async function goalsRoute(app: FastifyInstance): Promise<void> {
   // GET /companies/:companyId/goals
-  app.get(
+  app.get<GoalParams>(
     "/",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<GoalParams>, reply) => {
+    async (request, reply) => {
       const rows = await db.query.companyGoals.findMany({
-        where: and(
-          eq(companyGoals.companyId, request.company.id),
-          isNull(companyGoals.deletedAt)
-        ),
+        where: eq(companyGoals.companyId, request.company.id),
         orderBy: [desc(companyGoals.createdAt)],
       });
 
@@ -46,10 +43,10 @@ export async function goalsRoute(app: FastifyInstance): Promise<void> {
   );
 
   // POST /companies/:companyId/goals
-  app.post(
+  app.post<GoalParams>(
     "/",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<GoalParams>, reply) => {
+    async (request, reply) => {
       const result = CreateGoalSchema.safeParse(request.body);
       if (!result.success) throw new ValidationError(result.error.message);
 
@@ -74,10 +71,10 @@ export async function goalsRoute(app: FastifyInstance): Promise<void> {
   );
 
   // PATCH /companies/:companyId/goals/:goalId
-  app.patch(
+  app.patch<GoalParams>(
     "/:goalId",
     { preHandler: [authenticate, requireCompanyAccess] },
-    async (request: FastifyRequest<GoalParams>, reply) => {
+    async (request, reply) => {
       const { goalId } = request.params;
       if (!goalId) throw new ValidationError("goalId is required");
 
@@ -90,8 +87,7 @@ export async function goalsRoute(app: FastifyInstance): Promise<void> {
         .where(
           and(
             eq(companyGoals.id, goalId),
-            eq(companyGoals.companyId, request.company.id),
-            isNull(companyGoals.deletedAt)
+            eq(companyGoals.companyId, request.company.id)
           )
         )
         .returning();

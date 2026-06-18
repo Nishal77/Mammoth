@@ -18,10 +18,9 @@ export type LogContext = {
 // Child loggers inherit the transport and level.
 const rootLogger = pino({
   level: process.env["LOG_LEVEL"] ?? "info",
-  transport:
-    process.env["NODE_ENV"] !== "production"
-      ? { target: "pino-pretty", options: { colorize: true } }
-      : undefined,
+  ...(process.env["NODE_ENV"] !== "production"
+    ? { transport: { target: "pino-pretty", options: { colorize: true } } }
+    : {}),
   // Always include timestamp in ISO format so log aggregators can sort.
   timestamp: pino.stdTimeFunctions.isoTime,
 });
