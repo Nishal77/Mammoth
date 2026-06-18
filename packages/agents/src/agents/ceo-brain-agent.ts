@@ -6,6 +6,7 @@ import { MODELS } from "../router/model-router.ts";
 import { upsertMemory } from "../memory/memory-writer.ts";
 import { updateGoalProgress } from "../goal/goal-progress-tracker.ts";
 import { generateBriefing } from "../goal/briefing-generator.ts";
+import { dispatchDepartmentTasks } from "../orchestration/department-dispatcher.ts";
 import type { AgentTaskInput, AgentTaskOutput } from "../base/base-agent.ts";
 
 const CeoOutputSchema = z.object({
@@ -63,6 +64,14 @@ export class CeoBrainAgent extends BaseAgent {
 
     // Persist department priorities to memory — future agents read these as context
     await this.savePrioritiesToMemory(parsed.priorities);
+
+    // Dispatch tasks to each department based on CEO priorities
+    // Non-blocking — dispatch failure must not fail the CEO Brain run itself
+    void dispatchDepartmentTasks(this.runCtx.companyId, parsed.priorities).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      // eslint-disable-next-line no-console
+      console.error("[ceo-brain] Department dispatch failed:", msg);
+    });
 
     // Generate daily briefing (no-op if already done today)
     void generateBriefing(this.runCtx.companyId, "daily");

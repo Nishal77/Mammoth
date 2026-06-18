@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Queue } from "bullmq";
-import { db, integrations, companies } from "@mammoth/db";
+import { db, integrations, companies, departmentTasks } from "@mammoth/db";
 import { eq, and } from "drizzle-orm";
 import { verifyGithubWebhookSignature } from "@mammoth/integrations/github";
 import type { AgentJobData } from "@mammoth/agents";
@@ -103,7 +103,7 @@ export async function githubWebhookRoute(app: FastifyInstance): Promise<void> {
         columns: {
           companyId: true,
           accessTokenEnc: true,
-          config: true,
+          metadata: true,
         },
       });
 
@@ -113,7 +113,7 @@ export async function githubWebhookRoute(app: FastifyInstance): Promise<void> {
       }
 
       // Verify webhook signature using the stored secret
-      const config = integration.config as { webhookSecret?: string; repo?: string } | null;
+      const config = integration.metadata as unknown as { webhookSecret?: string; repo?: string } | null;
       const webhookSecret = config?.webhookSecret ?? process.env["GITHUB_WEBHOOK_SECRET"] ?? "";
 
       if (webhookSecret && !verifyGithubWebhookSignature(rawBody, signature, webhookSecret)) {
@@ -142,28 +142,50 @@ export async function githubWebhookRoute(app: FastifyInstance): Promise<void> {
       }
 
       const pr = eventData.pull_request;
-      const taskId = `pr-review-${pr.number}-${pr.head.sha.slice(0, 7)}`;
+
+      const prParams = {
+        prNumber: pr.number,
+        prTitle: pr.title,
+        prBody: pr.body ?? "",
+        prUrl: pr.html_url,
+        author: pr.user.login,
+        baseBranch: pr.base.ref,
+        headBranch: pr.head.ref,
+        additions: pr.additions,
+        deletions: pr.deletions,
+        changedFiles: pr.changed_files,
+        repoOwner: eventData.repository.owner.login,
+        repoName: eventData.repository.name,
+      };
+
+      // Create the task row first — the agent-worker resolves department name from this row.
+      const [createdTask] = await db
+        .insert(departmentTasks)
+        .values({
+          companyId: integration.companyId,
+          departmentId: engDept.id,
+          title: `PR #${pr.number}: ${pr.title}`,
+          taskType: "pr_review",
+          status: "queued",
+          inputData: prParams,
+        })
+        .onConflictDoNothing()
+        .returning({ id: departmentTasks.id });
+
+      if (!createdTask) {
+        // Conflict — duplicate webhook delivery, already queued
+        return reply.send({ ok: true, ignored: true, reason: "duplicate" });
+      }
+
+      const agentRunId = `github-${pr.number}-${pr.head.sha.slice(0, 7)}`;
 
       const jobData: AgentJobData = {
         companyId: integration.companyId,
         departmentId: engDept.id,
-        taskId,
-        agentRunId: `github-webhook-${Date.now()}`,
+        taskId: createdTask.id,
+        agentRunId,
         taskType: "pr_review",
-        parameters: {
-          prNumber: pr.number,
-          prTitle: pr.title,
-          prBody: pr.body ?? "",
-          prUrl: pr.html_url,
-          author: pr.user.login,
-          baseBranch: pr.base.ref,
-          headBranch: pr.head.ref,
-          additions: pr.additions,
-          deletions: pr.deletions,
-          changedFiles: pr.changed_files,
-          repoOwner: eventData.repository.owner.login,
-          repoName: eventData.repository.name,
-        },
+        parameters: prParams,
       };
 
       await agentQueue.add(`pr-review:${integration.companyId}:${pr.number}`, jobData, {

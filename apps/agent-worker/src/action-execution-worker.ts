@@ -12,6 +12,8 @@ import {
 } from "@mammoth/integrations/hubspot";
 import { initiateVapiCall } from "@mammoth/integrations/vapi";
 import { createLogger } from "@mammoth/observability/logger";
+import { evaluateActionPolicy, auditLog } from "@mammoth/shared/security";
+import { fireOutboundWebhook, isValidWebhookUrl } from "@mammoth/integrations/n8n";
 
 const log = createLogger("action-executor");
 
@@ -98,9 +100,21 @@ export const executionWorker = new Worker<ExecutionJobData>(
     execLog.info("Executing approved action");
 
     try {
+      // Policy check before any real-world action is dispatched
+      const policy = evaluateActionPolicy({ companyId, department, actionType, ringLevel: 1 });
+      if (!policy.allowed) {
+        execLog.warn("Action blocked by policy engine", { reason: policy.reason });
+        auditLog({ event: "action.blocked", companyId, resourceType: "approval", resourceId: approvalId, actionType, metadata: { reason: policy.reason } });
+        return;
+      }
+
       await dispatchAction(companyId, department, actionType, outputContent, job.data);
 
       execLog.info("Action dispatched successfully");
+      auditLog({ event: "action.dispatched", companyId, resourceType: "approval", resourceId: approvalId, actionType });
+
+      // Non-blocking: fire outbound webhook if N8N integration is configured
+      void fireN8nWebhook(companyId, department, actionType, approvalId, outputContent).catch(() => {});
     } catch (error) {
       execLog.errorWithStack("Action dispatch failed", error as Error);
       throw error;
@@ -353,20 +367,32 @@ async function dispatchVoiceCall(companyId: string, callSpec: string): Promise<v
   }
 
   const apiKey = decryptToken(integration.accessTokenEnc);
-  const config = integration.metadata as unknown as { phoneNumberId?: string; toPhone?: string } | null;
+  const config = integration.metadata as unknown as { phoneNumberId?: string; defaultToPhone?: string } | null;
 
-  if (!config?.phoneNumberId || !config.toPhone) {
-    log.warn("Vapi config missing phoneNumberId or toPhone", { companyId });
+  if (!config?.phoneNumberId) {
+    log.warn("Vapi config missing phoneNumberId", { companyId });
     return;
   }
 
+  // Support agent embeds CALL_TO in callSpec. Fall back to config.defaultToPhone.
+  const callToMatch = callSpec.match(/^CALL_TO:\s*(\+?[\d\s\-().]+)/m);
+  const toPhone = callToMatch?.[1]?.trim() ?? config.defaultToPhone;
+
+  if (!toPhone) {
+    log.warn("No phone number in callSpec or Vapi config", { companyId });
+    return;
+  }
+
+  // Strip the header lines before passing as system prompt
+  const scriptContent = callSpec.replace(/^(CALL_TO|CUSTOMER):.+\n?/gm, "").trim();
+
   const result = await initiateVapiCall(apiKey, {
-    toPhone: config.toPhone,
+    toPhone,
     fromPhoneId: config.phoneNumberId,
     assistantConfig: {
       name: "MAMMOTH Support Agent",
-      firstMessage: "Hi, this is an automated call from MAMMOTH AI on behalf of the team.",
-      systemPrompt: callSpec.slice(0, 2000),
+      firstMessage: "Hi, this is an automated call from MAMMOTH AI on behalf of the support team.",
+      systemPrompt: scriptContent.slice(0, 2000),
       maxDurationSeconds: 180,
     },
   });
@@ -375,7 +401,7 @@ async function dispatchVoiceCall(companyId: string, callSpec: string): Promise<v
     throw new Error(`Voice call failed: ${result.reason}`);
   }
 
-  log.info("Voice call initiated", { companyId, callId: result.callId });
+  log.info("Voice call initiated", { companyId, callId: result.callId, toPhone });
 }
 
 async function dispatchOfferLetterEmail(
@@ -399,6 +425,40 @@ async function dispatchOfferLetterEmail(
   if (!result.sent) {
     throw new Error(`Offer letter email failed: ${result.reason}`);
   }
+}
+
+async function fireN8nWebhook(
+  companyId: string,
+  department: string,
+  actionType: string,
+  approvalId: string,
+  outputContent: string
+): Promise<void> {
+  const integration = await db.query.integrations.findFirst({
+    where: and(
+      eq(integrations.companyId, companyId),
+      eq(integrations.provider, "n8n"),
+      eq(integrations.status, "connected")
+    ),
+    columns: { metadata: true },
+  });
+
+  if (!integration?.metadata) return;
+
+  const config = integration.metadata as unknown as { webhookUrl?: string } | null;
+  const webhookUrl = config?.webhookUrl;
+
+  if (!webhookUrl || !isValidWebhookUrl(webhookUrl)) return;
+
+  await fireOutboundWebhook(webhookUrl, {
+    event: "action.executed",
+    companyId,
+    department,
+    actionType,
+    approvalId,
+    outputContent: outputContent.slice(0, 1000),
+    timestamp: new Date().toISOString(),
+  });
 }
 
 executionWorker.on("failed", (job, error) => {

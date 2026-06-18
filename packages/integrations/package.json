@@ -16,7 +16,8 @@
     "./exa": "./src/exa/index.ts",
     "./linkedin": "./src/linkedin/index.ts",
     "./twitter": "./src/twitter/index.ts",
-    "./vapi": "./src/vapi/index.ts"
+    "./vapi": "./src/vapi/index.ts",
+    "./n8n": "./src/n8n/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

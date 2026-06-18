@@ -1,6 +1,6 @@
 import { db, departmentTasks, taskRuns, agentRuns, approvals, companies, publishNotification } from "@mammoth/db";
 import { eq, sql } from "drizzle-orm";
-import { loadCompanyContext, formatContextForPrompt } from "../memory/memory-loader.ts";
+import { loadCompanyContext, formatContextForDepartment } from "../memory/memory-loader.ts";
 import { callModel, MODELS } from "../router/model-router.ts";
 import { captureOutcome } from "../goal/outcome-capturer.ts";
 import { validateCompanyId, auditLog } from "@mammoth/shared/security";
@@ -153,9 +153,9 @@ Process the external data above according to your task instruction.`;
     return result;
   }
 
-  /** Builds the standard company-grounded system prompt prefix. */
+  /** Builds the department-scoped system prompt. Each agent only sees its relevant context. */
   protected buildSystemPrompt(roleDescription: string): string {
-    const contextBlock = formatContextForPrompt(this.companyCtx);
+    const contextBlock = formatContextForDepartment(this.companyCtx, this.departmentName);
 
     return `You are MAMMOTH's ${this.departmentName} agent for ${this.companyCtx.companyName}.
 

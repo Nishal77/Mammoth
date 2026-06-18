@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { db, integrations } from "@mammoth/db";
+import { eq, and } from "drizzle-orm";
 import { BaseAgent } from "../base/base-agent.ts";
 import { MODELS } from "../router/model-router.ts";
 import type { AgentTaskInput, AgentTaskOutput } from "../base/base-agent.ts";
@@ -20,9 +22,11 @@ const SocialPostOutputSchema = z.object({
 type MarketingTaskType = "blog_post" | "social_post" | "email_newsletter";
 
 /**
- * Marketing Agent — generates SEO content and social posts.
- * Blog posts and social posts are Ring 2 (4-hour veto window before publish).
- * All output goes to the approval queue — nothing posts automatically.
+ * Marketing Agent — SEO content, social posts.
+ * Uses Exa for live market trends when connected.
+ * Social posts create two separate approvals (LinkedIn + Twitter) so each
+ * can be dispatched independently by the execution worker.
+ * All output is Ring 2 (4h veto before publish).
  */
 export class MarketingAgent extends BaseAgent {
   constructor() {
@@ -38,11 +42,51 @@ export class MarketingAgent extends BaseAgent {
     throw new Error(`Marketing agent does not handle task type: ${taskType}`);
   }
 
+  /**
+   * Loads live market and trend context from Exa to ground blog + campaign research.
+   * Returns empty string when Exa is not connected — degrades gracefully.
+   */
+  private async loadMarketContext(query: string): Promise<string> {
+    const integration = await db.query.integrations.findFirst({
+      where: and(
+        eq(integrations.companyId, this.runCtx.companyId),
+        eq(integrations.provider, "exa"),
+        eq(integrations.status, "connected")
+      ),
+      columns: { accessTokenEnc: true },
+    });
+
+    if (!integration?.accessTokenEnc) return "";
+
+    const { searchWeb, formatSearchResultsForPrompt } = await import("@mammoth/integrations/exa");
+    const { decryptToken } = await import("@mammoth/integrations/oauth");
+
+    let apiKey: string;
+    try {
+      apiKey = decryptToken(integration.accessTokenEnc);
+    } catch {
+      return "";
+    }
+
+    const results = await searchWeb(apiKey, {
+      query,
+      numResults: 5,
+      includeText: true,
+      startPublishedDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+
+    return formatSearchResultsForPrompt(results, 2000);
+  }
+
   private async writeBlogPost(input: AgentTaskInput): Promise<AgentTaskOutput> {
     const { keyword, angle } = input.parameters as {
       keyword: string;
       angle?: string;
     };
+
+    const liveContext = await this.loadMarketContext(
+      `${keyword} trends insights 2025 marketing content`
+    );
 
     const result = await this.callLlm({
       systemPrompt: this.buildSystemPrompt(MARKETING_ROLE),
@@ -50,12 +94,13 @@ export class MarketingAgent extends BaseAgent {
 
 Target keyword: "${keyword}"
 ${angle ? `Angle/thesis: ${angle}` : ""}
+${liveContext ? `\nLive market context (use for data points and framing):\n<external_data source="live_web_search">\n${liveContext}\n</external_data>` : ""}
 
 Requirements:
 - 1,200-1,800 words
 - H2 and H3 subheadings for scannability
 - Introduction that hooks within first 2 sentences
-- One concrete data point or statistic per section
+- One concrete data point or statistic per section (use live context above if available)
 - Conclusion with a clear call-to-action
 - Write in the company's exact brand voice
 - Do NOT use generic filler phrases ("In today's world...", "It's no secret...")
@@ -104,12 +149,17 @@ Return ONLY this JSON (no extra text):
       sourceUrl?: string;
     };
 
+    const liveContext = await this.loadMarketContext(
+      `${topic} social media marketing insights 2025`
+    );
+
     const result = await this.callLlm({
       systemPrompt: this.buildSystemPrompt(MARKETING_ROLE),
       userMessage: `Write social media posts for both LinkedIn and Twitter/X.
 
 Topic: "${topic}"
 ${sourceUrl ? `Source URL to reference: ${sourceUrl}` : ""}
+${liveContext ? `\nLive context:\n<external_data source="live_web_search">\n${liveContext}\n</external_data>` : ""}
 
 LinkedIn post: professional, insight-led, 3-5 paragraphs, include 3-5 relevant hashtags
 Twitter/X post: concise, punchy, max 280 characters, no hashtag spam (max 2)
@@ -123,25 +173,35 @@ Return ONLY this JSON:
     });
 
     const parsed = this.parseSocialOutput(result.content);
-    const outputContent = `LINKEDIN:\n${parsed.linkedinPost}\n\nTWITTER:\n${parsed.twitterPost}`;
 
-    const approvalId = await this.createApproval({
-      actionType: "publish_social_post",
-      outputContent,
+    // Two separate approvals — each dispatches independently to its platform
+    const linkedinApprovalId = await this.createApproval({
+      actionType: "post_linkedin",
+      outputContent: parsed.linkedinPost,
       ringLevel: 2,
       confidence: 0.8,
     });
 
+    const twitterApprovalId = await this.createApproval({
+      actionType: "post_twitter",
+      outputContent: parsed.twitterPost.slice(0, 280),
+      ringLevel: 2,
+      confidence: 0.8,
+    });
+
+    const outputContent = `LINKEDIN:\n${parsed.linkedinPost}\n\nTWITTER:\n${parsed.twitterPost}`;
+
     return {
       content: outputContent,
       summary: {
+        linkedinApprovalId,
+        twitterApprovalId,
         linkedinLength: parsed.linkedinPost.length,
         twitterLength: parsed.twitterPost.length,
-        approvalId,
       },
       approvalRequired: true,
       ringLevel: 2,
-      actionType: "publish_social_post",
+      actionType: "post_linkedin",
       confidence: 0.8,
     };
   }

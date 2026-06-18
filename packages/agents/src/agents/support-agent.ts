@@ -21,11 +21,12 @@ const KbArticleSchema = z.object({
   tags: z.array(z.string()),
 });
 
-type SupportTaskType = "resolve_ticket" | "create_kb_article" | "update_kb_article";
+type SupportTaskType = "resolve_ticket" | "create_kb_article" | "update_kb_article" | "initiate_voice_call";
 
 /**
- * Support Agent — ticket resolution, knowledge base maintenance.
- * Ticket replies are Ring 2 (human review). KB article creation is Ring 2.
+ * Support Agent — ticket resolution, knowledge base maintenance, voice callbacks.
+ * Ticket replies and KB articles are Ring 2 (human review).
+ * Voice calls are Ring 3 — explicit founder approval required before any call is placed.
  */
 export class SupportAgent extends BaseAgent {
   constructor() {
@@ -37,6 +38,7 @@ export class SupportAgent extends BaseAgent {
 
     if (taskType === "resolve_ticket") return this.resolveTicket(input);
     if (taskType === "create_kb_article") return this.createKbArticle(input);
+    if (taskType === "initiate_voice_call") return this.prepareVoiceCall(input);
 
     throw new Error(`Support agent does not handle task type: ${taskType}`);
   }
@@ -140,6 +142,79 @@ Return ONLY this JSON:
       ringLevel: 2,
       actionType: "publish_kb_article",
       confidence: 0.8,
+    };
+  }
+
+  /**
+   * Prepares a Vapi voice call script for a customer callback.
+   * Ring 3 — founder must explicitly approve before any call is placed.
+   * The execution worker parses CALL_TO from outputContent to get the phone number.
+   */
+  private async prepareVoiceCall(input: AgentTaskInput): Promise<AgentTaskOutput> {
+    const { ticketId, customerName, phoneNumber, issueContext } = input.parameters as {
+      ticketId?: string;
+      customerName: string;
+      phoneNumber: string;
+      issueContext: string;
+    };
+
+    let ticketContext = issueContext;
+
+    if (ticketId) {
+      const ticket = await db.query.supportTickets.findFirst({
+        where: eq(supportTickets.id, ticketId),
+        columns: { subject: true, body: true, priority: true },
+      });
+      if (ticket) {
+        ticketContext = `Issue: ${ticket.subject}\nDetails: ${ticket.body}\nPriority: ${ticket.priority}`;
+      }
+    }
+
+    const systemPrompt = this.buildSystemPrompt(SUPPORT_ROLE);
+
+    const result = await this.callLlm({
+      systemPrompt,
+      userMessage: `Write a natural phone call script for an AI agent calling a customer about their support issue.
+
+Customer: ${customerName}
+
+<external_data source="support_ticket">
+${ticketContext}
+</external_data>
+
+Write a short, natural conversation script (not robotic). The AI agent should:
+1. Introduce itself as an automated assistant calling on behalf of the support team
+2. Confirm the customer's issue
+3. Offer a resolution or timeline
+4. Ask if they have questions
+
+Keep it under 2 minutes. Write the script in plain prose, not bullet points.`,
+      maxTokens: 1000,
+    });
+
+    // CALL_TO line is parsed by the execution worker's dispatchVoiceCall function
+    const callSpec = [
+      `CALL_TO: ${phoneNumber}`,
+      `CUSTOMER: ${customerName}`,
+      "",
+      result.content,
+    ].join("\n");
+
+    const approvalId = await this.createApproval({
+      actionType: "initiate_voice_call",
+      outputContent: callSpec,
+      // Ring 3 — never auto-executes. Founder must explicitly approve.
+      ringLevel: 3,
+      confidence: 0.75,
+    });
+
+    return {
+      content: `Voice call prepared for ${customerName} (${phoneNumber})`,
+      summary: { approvalId, customerName, phoneNumber, ticketId },
+      approvalRequired: true,
+      ringLevel: 3,
+      actionType: "initiate_voice_call",
+      confidence: 0.75,
     };
   }
 
