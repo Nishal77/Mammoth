@@ -1,6 +1,6 @@
 import { db, leads, customers, integrations } from "@mammoth/memory-database";
 import { and, eq } from "drizzle-orm";
-import { decryptToken } from "../oauth/token-encryptor.ts";
+import { decryptToken } from "@mammoth/tool-oauth";
 import { fetchHubspotContacts, fetchHubspotDeals } from "./hubspot-client.ts";
 import type { HubspotContact, HubspotDeal } from "./hubspot-client.ts";
 import { mapHubspotStatusToLeadStatus } from "./hubspot-status-mapper.ts";

@@ -1,4 +1,4 @@
-export { fetchHubspotContacts, fetchHubspotDeals } from "./hubspot-client.ts";
+export { fetchHubspotContacts, fetchHubspotDeals, logOutreachEmailInHubspot, updateHubspotLeadStatus } from "./hubspot-client.ts";
 export type { HubspotContact, HubspotDeal } from "./hubspot-client.ts";
 
 export { syncHubspot } from "./hubspot-sync.ts";

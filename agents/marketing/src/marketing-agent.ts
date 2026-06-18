@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { db, integrations } from "@mammoth/memory-database";
 import { eq, and } from "drizzle-orm";
-import { BaseAgent } from "../base/base-agent.ts";
-import { MODELS } from "../router/model-router.ts";
-import type { AgentTaskInput, AgentTaskOutput } from "../base/base-agent.ts";
+import { BaseAgent } from "@mammoth/agent-base";
+import { MODELS } from "@mammoth/agent-base";
+import type { AgentTaskInput, AgentTaskOutput } from "@mammoth/agent-base";
 
 const BlogPostOutputSchema = z.object({
   title: z.string(),

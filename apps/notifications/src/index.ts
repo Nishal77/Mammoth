@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import Redis from "ioredis";
+import { Redis } from "ioredis";
 import { telegramBot } from "./telegram/telegram-bot.ts";
 import { registerTelegramStartHandler } from "./telegram/telegram-connect.ts";
 import { whatsappWebhookRoute } from "./whatsapp/whatsapp-webhook.ts";

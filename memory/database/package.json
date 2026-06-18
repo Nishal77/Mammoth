@@ -21,7 +21,8 @@
     "drizzle-orm": "^0.38.3",
     "postgres": "^3.4.5",
     "zod": "^3.24.1",
-    "ioredis": "^5.4.2"
+    "ioredis": "^5.4.2",
+    "@mammoth/shared": "workspace:*"
   },
   "devDependencies": {
     "@mammoth/typescript-config": "workspace:*",

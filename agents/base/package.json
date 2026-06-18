@@ -13,12 +13,18 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "openai": "^4.68.4",
     "bullmq": "^5.34.5",
     "ioredis": "^5.4.2",
+    "drizzle-orm": "^0.38.3",
     "zod": "^3.24.1",
     "@mammoth/memory-database": "workspace:*",
+    "@mammoth/memory-retrieval": "workspace:*",
     "@mammoth/shared": "workspace:*",
-    "@mammoth/observability": "workspace:*"
+    "@mammoth/observability": "workspace:*",
+    "@mammoth/eval-policy": "workspace:*",
+    "@mammoth/tool-slack": "workspace:*",
+    "@mammoth/tool-oauth": "workspace:*"
   },
   "devDependencies": {
     "@mammoth/typescript-config": "workspace:*",

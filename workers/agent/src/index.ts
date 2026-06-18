@@ -20,28 +20,25 @@ initTracing({
 const log = createLogger("agent-worker");
 
 import type { Job } from "bullmq";
-import {
-  createAgentWorker,
-  CeoBrainAgent,
-  MarketingAgent,
-  SalesAgent,
-  SupportAgent,
-  ResearchAgent,
-  FinanceAgent,
-  EngineeringAgent,
-  HrAgent,
-  ContentAgent,
-  QUEUE_NAMES,
-} from "@mammoth/agent-base";
-import type { AgentJobData, AgentTaskOutput } from "@mammoth/agent-base";
+import { createAgentWorker, QUEUE_NAMES } from "@mammoth/agent-base";
+import type { AgentJobData, AgentTaskOutput, AgentRunContext, AgentTaskInput } from "@mammoth/agent-base";
+import { CeoBrainAgent } from "@mammoth/agent-executive";
+import { MarketingAgent } from "@mammoth/agent-marketing";
+import { SalesAgent } from "@mammoth/agent-sales";
+import { SupportAgent } from "@mammoth/agent-support";
+import { ResearchAgent } from "@mammoth/agent-research";
+import { FinanceAgent } from "@mammoth/agent-finance";
+import { EngineeringAgent } from "@mammoth/agent-engineering";
+import { HrAgent } from "@mammoth/agent-hr";
+import { ContentAgent } from "@mammoth/agent-content";
 import { db, departmentTasks, companies, publishSocketEvent } from "@mammoth/memory-database";
 import { eq } from "drizzle-orm";
+import { Redis } from "ioredis";
 import {
   expiryWorker,
   registerExpiryCheckJob,
 } from "./approval-expiry-worker.ts";
 import { executionWorker } from "./action-execution-worker.ts";
-import Redis from "ioredis";
 
 // Shared Redis connection used for DLQ publishing.
 const redis = new Redis({
@@ -51,10 +48,11 @@ const redis = new Redis({
   maxRetriesPerRequest: null,
 });
 
-const DEPARTMENT_AGENT_MAP: Record<
-  string,
-  () => { run: (ctx: import("@mammoth/agent-base").AgentRunContext, input: import("@mammoth/agent-base").AgentTaskInput) => Promise<AgentTaskOutput> }
-> = {
+type AgentInstance = {
+  run: (ctx: AgentRunContext, input: AgentTaskInput) => Promise<AgentTaskOutput>;
+};
+
+const DEPARTMENT_AGENT_MAP: Record<string, () => AgentInstance> = {
   ceo: () => new CeoBrainAgent(),
   marketing: () => new MarketingAgent(),
   sales: () => new SalesAgent(),
@@ -67,10 +65,8 @@ const DEPARTMENT_AGENT_MAP: Record<
 };
 
 async function processJob(job: Job<AgentJobData>): Promise<void> {
-  const { companyId, departmentId, taskId, agentRunId, taskType, parameters } =
-    job.data;
+  const { companyId, departmentId, taskId, agentRunId, taskType, parameters } = job.data;
 
-  // Bind all job identifiers to this log instance — every log line includes them.
   const jobLog = log.withContext({ companyId, agentRunId, taskId, actionType: taskType });
   jobLog.info(`Processing job ${job.id}`);
 
@@ -140,15 +136,14 @@ worker.on("completed", (job) => {
 
 worker.on("failed", (job, error) => {
   const jobLog = log.withContext({
-    companyId: job?.data?.companyId,
-    agentRunId: job?.data?.agentRunId,
-    taskId: job?.data?.taskId,
-    actionType: job?.data?.taskType,
+    companyId: job?.data?.companyId ?? "unknown",
+    agentRunId: job?.data?.agentRunId ?? "unknown",
+    taskId: job?.data?.taskId ?? "unknown",
+    actionType: job?.data?.taskType ?? "unknown",
   });
 
   jobLog.errorWithStack(`Job failed after ${job?.attemptsMade ?? 0} attempts`, error);
 
-  // Send to Sentry so the team gets alerted.
   captureError(error, {
     jobId: job?.id ?? "unknown",
     companyId: job?.data?.companyId ?? "unknown",
@@ -157,10 +152,13 @@ worker.on("failed", (job, error) => {
     attemptsMade: job?.attemptsMade ?? 0,
   });
 
-  // Push to DLQ so the job can be inspected and replayed later.
-  // Non-blocking — a DLQ publish failure should not crash the worker.
   if (job) {
-    void publishToDlq(redis, QUEUE_NAMES.AGENT_TASKS, job, error).catch((dlqError) => {
+    void publishToDlq(
+      { host: process.env["REDIS_HOST"] ?? "localhost", port: Number(process.env["REDIS_PORT"] ?? 6379), maxRetriesPerRequest: null },
+      QUEUE_NAMES.AGENT_TASKS,
+      job,
+      error
+    ).catch((dlqError) => {
       log.errorWithStack("Failed to publish job to DLQ", dlqError as Error, {
         jobId: job.id ?? "unknown",
       });

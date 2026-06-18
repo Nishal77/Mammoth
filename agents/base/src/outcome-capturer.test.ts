@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the memory writer before importing the module under test.
 // Without this, importing outcome-capturer.ts would trigger the DB connection.
-vi.mock("../memory/memory-writer.ts", () => ({
+vi.mock("@mammoth/memory-retrieval", () => ({
   upsertMemory: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { captureOutcome } from "./outcome-capturer.ts";
-import { upsertMemory } from "../memory/memory-writer.ts";
+import { upsertMemory } from "@mammoth/memory-retrieval";
 
 const BASE_OUTPUT = {
   content: "Published a blog post about Q4 roadmap.",

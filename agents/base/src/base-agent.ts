@@ -1,11 +1,11 @@
 import { db, departmentTasks, taskRuns, agentRuns, approvals, companies, publishNotification } from "@mammoth/memory-database";
 import { eq, sql } from "drizzle-orm";
-import { loadCompanyContext, formatContextForDepartment } from "../memory/memory-loader.ts";
-import { callModel, MODELS } from "../router/model-router.ts";
-import { captureOutcome } from "../goal/outcome-capturer.ts";
+import { loadCompanyContext, formatContextForDepartment } from "@mammoth/memory-retrieval";
+import { callModel, MODELS } from "./model-router.ts";
+import { captureOutcome } from "./outcome-capturer.ts";
 import { validateCompanyId, auditLog } from "@mammoth/eval-policy";
-import type { ModelId, ModelCallResult } from "../router/model-router.ts";
-import type { CompanyContext } from "../memory/memory-loader.ts";
+import type { ModelId, ModelCallResult } from "./model-router.ts";
+import type { CompanyContext } from "@mammoth/memory-retrieval";
 
 export type AgentRunContext = {
   companyId: string;

@@ -86,8 +86,6 @@ async function autoApproveExpired(): Promise<void> {
           ringLevel: 2,
           consecutiveApprovals: 1,
           consecutiveUnmodified: 1,
-          totalApprovals: 1,
-          totalModifications: 0,
         })
         .onConflictDoUpdate({
           target: [
@@ -98,7 +96,6 @@ async function autoApproveExpired(): Promise<void> {
           set: {
             consecutiveApprovals: sql`${trustScores.consecutiveApprovals} + 1`,
             consecutiveUnmodified: sql`${trustScores.consecutiveUnmodified} + 1`,
-            totalApprovals: sql`${trustScores.totalApprovals} + 1`,
             updatedAt: new Date(),
           },
         });

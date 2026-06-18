@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { db, metricsDaily, companyGoals } from "@mammoth/memory-database";
 import { eq, desc } from "drizzle-orm";
-import { BaseAgent } from "../base/base-agent.ts";
-import { MODELS } from "../router/model-router.ts";
-import type { AgentTaskInput, AgentTaskOutput } from "../base/base-agent.ts";
+import { BaseAgent } from "@mammoth/agent-base";
+import { MODELS } from "@mammoth/agent-base";
+import type { AgentTaskInput, AgentTaskOutput } from "@mammoth/agent-base";
 
 const FinancialReportSchema = z.object({
   period: z.string(),

@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { createHash } from "crypto";
-import { MODELS } from "../router/model-router.ts";
+import { MODELS } from "@mammoth/agent-base";
 
 const openai = new OpenAI({ apiKey: process.env["OPENAI_API_KEY"] });
 

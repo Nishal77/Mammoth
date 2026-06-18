@@ -15,6 +15,7 @@ export type AuditEvent =
   | "action.dispatched"
   | "action.approval_granted"
   | "action.approval_rejected"
+  | "action.blocked"
   | "auth.login"
   | "auth.logout"
   | "integration.connected"

@@ -1,5 +1,4 @@
-import { Queue, Worker, type Job } from "bullmq";
-import type { Redis } from "ioredis";
+import { Queue, type Job, type ConnectionOptions } from "bullmq";
 
 /**
  * Dead Letter Queue (DLQ) for failed BullMQ agent jobs.
@@ -35,13 +34,13 @@ export const DLQ_QUEUE_NAME = "dead-letter-queue";
  * Publishes a failed job to the DLQ.
  * Call this in your worker's `failed` event handler.
  *
- * @param redisConnection - The same Redis connection used by BullMQ
+ * @param redisConnection - The same Redis connection options used by BullMQ
  * @param sourceQueue     - Name of the queue the job came from
  * @param job             - The failed BullMQ job
  * @param error           - The error that caused the failure
  */
 export async function publishToDlq(
-  redisConnection: Redis,
+  redisConnection: ConnectionOptions,
   sourceQueue: string,
   job: Job,
   error: Error
@@ -66,7 +65,7 @@ export async function publishToDlq(
     attemptsMade: job.attemptsMade,
   };
 
-  await dlqQueue.add(`failed:${job.id}`, dlqData);
+  await dlqQueue.add(`failed:${job.id ?? "unknown"}`, dlqData);
   await dlqQueue.close();
 }
 
@@ -74,14 +73,13 @@ export async function publishToDlq(
  * Returns all jobs currently in the DLQ.
  * Use this for a monitoring endpoint or admin dashboard.
  *
- * @param redisConnection - The same Redis connection used by BullMQ
+ * @param redisConnection - The same Redis connection options used by BullMQ
  */
-export async function getDlqJobs(redisConnection: Redis): Promise<DlqJobData[]> {
+export async function getDlqJobs(redisConnection: ConnectionOptions): Promise<DlqJobData[]> {
   const dlqQueue = new Queue<DlqJobData>(DLQ_QUEUE_NAME, {
     connection: redisConnection,
   });
 
-  // "wait" state = jobs sitting in the DLQ waiting for operator action.
   const jobs = await dlqQueue.getJobs(["wait", "delayed", "failed"]);
   await dlqQueue.close();
 
@@ -92,11 +90,11 @@ export async function getDlqJobs(redisConnection: Redis): Promise<DlqJobData[]> 
  * Replays a DLQ job by re-adding its original data to the source queue.
  * Use this after fixing the root cause of a failure.
  *
- * @param redisConnection  - The same Redis connection used by BullMQ
+ * @param redisConnection  - The same Redis connection options used by BullMQ
  * @param originalJobId    - The originalJobId from the DlqJobData
  */
 export async function replayDlqJob(
-  redisConnection: Redis,
+  redisConnection: ConnectionOptions,
   originalJobId: string
 ): Promise<boolean> {
   const dlqQueue = new Queue<DlqJobData>(DLQ_QUEUE_NAME, {
@@ -133,9 +131,9 @@ export async function replayDlqJob(
  * Returns the number of jobs currently waiting in the DLQ.
  * Use this for a health/metrics endpoint. DLQ depth > 0 should alert.
  *
- * @param redisConnection - The same Redis connection used by BullMQ
+ * @param redisConnection - The same Redis connection options used by BullMQ
  */
-export async function getDlqDepth(redisConnection: Redis): Promise<number> {
+export async function getDlqDepth(redisConnection: ConnectionOptions): Promise<number> {
   const dlqQueue = new Queue<DlqJobData>(DLQ_QUEUE_NAME, {
     connection: redisConnection,
   });

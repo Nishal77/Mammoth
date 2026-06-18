@@ -1,5 +1,5 @@
-import { upsertMemory } from "../memory/memory-writer.ts";
-import type { AgentTaskOutput } from "../base/base-agent.ts";
+import { upsertMemory } from "@mammoth/memory-retrieval";
+import type { AgentTaskOutput } from "./base-agent.ts";
 
 export type OutcomeCaptureOptions = {
   companyId: string;

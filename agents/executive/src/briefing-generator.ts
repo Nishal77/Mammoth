@@ -8,7 +8,7 @@ import {
   companies,
 } from "@mammoth/memory-database";
 import { eq, and, desc, gte } from "drizzle-orm";
-import { callModel, MODELS } from "../router/model-router.ts";
+import { callModel, MODELS } from "@mammoth/agent-base";
 import { publishNotification } from "@mammoth/memory-database";
 
 const BriefingOutputSchema = z.object({

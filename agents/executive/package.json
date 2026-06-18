@@ -17,6 +17,8 @@
     "@mammoth/agent-base": "workspace:*",
     "@mammoth/memory-database": "workspace:*",
     "@mammoth/memory-retrieval": "workspace:*",
+    "@mammoth/orchestrator-dispatcher": "workspace:*",
+    "drizzle-orm": "^0.38.3",
     "@mammoth/shared": "workspace:*"
   },
   "devDependencies": {

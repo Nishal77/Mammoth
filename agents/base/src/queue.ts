@@ -1,5 +1,4 @@
-import { Queue, Worker, type Job } from "bullmq";
-import IORedis from "ioredis";
+import { Queue, Worker, type Job, type ConnectionOptions } from "bullmq";
 
 export const QUEUE_NAMES = {
   AGENT_TASKS: "agent:tasks",
@@ -16,17 +15,15 @@ export type AgentJobData = {
   parameters: Record<string, unknown>;
 };
 
-const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379";
-
-let sharedConnection: IORedis | null = null;
-
-function getRedisConnection(): IORedis {
-  if (!sharedConnection) {
-    sharedConnection = new IORedis(REDIS_URL, {
-      maxRetriesPerRequest: null, // required by BullMQ
-    });
-  }
-  return sharedConnection;
+// BullMQ ConnectionOptions — host/port is simpler and avoids IORedis type friction.
+// maxRetriesPerRequest: null is required by BullMQ for blocking Redis commands.
+function buildRedisConnection(): ConnectionOptions {
+  return {
+    host: process.env["REDIS_HOST"] ?? "localhost",
+    port: Number(process.env["REDIS_PORT"] ?? 6379),
+    password: process.env["REDIS_PASSWORD"] ?? undefined,
+    maxRetriesPerRequest: null,
+  };
 }
 
 /**
@@ -35,7 +32,7 @@ function getRedisConnection(): IORedis {
  */
 export function createAgentQueue(): Queue<AgentJobData> {
   return new Queue<AgentJobData>(QUEUE_NAMES.AGENT_TASKS, {
-    connection: getRedisConnection(),
+    connection: buildRedisConnection(),
     defaultJobOptions: {
       attempts: 3,
       backoff: { type: "exponential", delay: 5000 },
@@ -56,7 +53,6 @@ export async function enqueueAgentTask(
   const jobName = `${data.taskType}:${data.companyId}`;
 
   const job = await queue.add(jobName, data, {
-    // Per-company rate limit: max 5 concurrent jobs per company
     jobId: data.taskId,
   });
 
@@ -70,12 +66,8 @@ export async function enqueueAgentTask(
 export function createAgentWorker(
   processJob: (job: Job<AgentJobData>) => Promise<void>
 ): Worker<AgentJobData> {
-  return new Worker<AgentJobData>(
-    QUEUE_NAMES.AGENT_TASKS,
-    processJob,
-    {
-      connection: getRedisConnection(),
-      concurrency: 5,
-    }
-  );
+  return new Worker<AgentJobData>(QUEUE_NAMES.AGENT_TASKS, processJob, {
+    connection: buildRedisConnection(),
+    concurrency: 5,
+  });
 }

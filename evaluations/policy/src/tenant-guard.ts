@@ -9,7 +9,7 @@
  * makes the boundary explicit and throws early on any mismatch.
  */
 
-import { ForbiddenError } from "../errors/index.ts";
+import { ForbiddenError } from "@mammoth/shared/errors";
 
 /**
  * Asserts that the resourceCompanyId matches the callerCompanyId.

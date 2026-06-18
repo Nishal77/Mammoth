@@ -1,7 +1,7 @@
 import { db, companyMemory } from "@mammoth/memory-database";
 import { inArray } from "drizzle-orm";
-import { embed } from "./embedding-service.ts";
-import { ensureMemoryCollection, memoryCollectionName, qdrant } from "./qdrant-client.ts";
+import { embed } from "@mammoth/memory-vector";
+import { ensureMemoryCollection, memoryCollectionName, qdrant } from "@mammoth/memory-vector";
 
 export type SemanticMemoryResult = {
   memoryId: string;

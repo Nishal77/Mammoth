@@ -1,7 +1,7 @@
 import { db, companyMemory, memoryEmbeddings } from "@mammoth/memory-database";
 import { eq, and } from "drizzle-orm";
-import { embed, hashContent } from "./embedding-service.ts";
-import { ensureMemoryCollection, memoryCollectionName, qdrant } from "./qdrant-client.ts";
+import { embed, hashContent } from "@mammoth/memory-vector";
+import { ensureMemoryCollection, memoryCollectionName, qdrant } from "@mammoth/memory-vector";
 import type { MemoryType } from "@mammoth/memory-database";
 
 export type UpsertMemoryOptions = {

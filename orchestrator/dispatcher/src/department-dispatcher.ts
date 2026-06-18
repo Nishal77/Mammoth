@@ -1,8 +1,8 @@
 import { Queue } from "bullmq";
 import { db, departments, departmentTasks, agentRuns } from "@mammoth/memory-database";
 import { eq, and } from "drizzle-orm";
-import type { AgentJobData } from "../base/queue.ts";
-import { QUEUE_NAMES } from "../base/queue.ts";
+import type { AgentJobData } from "@mammoth/agent-base";
+import { QUEUE_NAMES } from "@mammoth/agent-base";
 
 const log = {
   info: (msg: string, ctx?: Record<string, unknown>) => console.log(`[department-dispatcher] ${msg}`, ctx ?? ""),

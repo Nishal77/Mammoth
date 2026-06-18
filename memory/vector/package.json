@@ -14,7 +14,9 @@
   "dependencies": {
     "@qdrant/js-client-rest": "^1.13.0",
     "@anthropic-ai/sdk": "^0.39.0",
+    "openai": "^4.68.4",
     "zod": "^3.24.1",
+    "@mammoth/agent-base": "workspace:*",
     "@mammoth/memory-database": "workspace:*",
     "@mammoth/shared": "workspace:*"
   },

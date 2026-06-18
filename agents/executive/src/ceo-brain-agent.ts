@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { db, companyGoals, departments, metricsDaily, strategyDecisions } from "@mammoth/memory-database";
 import { eq, and, desc, gte } from "drizzle-orm";
-import { BaseAgent } from "../base/base-agent.ts";
-import { MODELS } from "../router/model-router.ts";
-import { upsertMemory } from "../memory/memory-writer.ts";
-import { updateGoalProgress } from "../goal/goal-progress-tracker.ts";
-import { generateBriefing } from "../goal/briefing-generator.ts";
-import { dispatchDepartmentTasks } from "../orchestration/department-dispatcher.ts";
-import type { AgentTaskInput, AgentTaskOutput } from "../base/base-agent.ts";
+import { BaseAgent } from "@mammoth/agent-base";
+import { MODELS } from "@mammoth/agent-base";
+import { upsertMemory } from "@mammoth/memory-retrieval";
+import { updateGoalProgress } from "./goal-progress-tracker.ts";
+import { generateBriefing } from "./briefing-generator.ts";
+import { dispatchDepartmentTasks } from "@mammoth/orchestrator-dispatcher";
+import type { AgentTaskInput, AgentTaskOutput } from "@mammoth/agent-base";
 
 const CeoOutputSchema = z.object({
   situationSummary: z.string(),

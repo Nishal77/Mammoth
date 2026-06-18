@@ -1,10 +1,10 @@
 import { sql } from "drizzle-orm";
-import type { PgTransaction } from "drizzle-orm/pg-core";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import type { ExtractTablesWithRelations } from "drizzle-orm";
 import type * as schema from "./schema/index.ts";
 
 type DB = PostgresJsDatabase<typeof schema>;
+// Drizzle exposes the transaction type via the callback parameter — infer it.
+type Tx = Parameters<Parameters<DB["transaction"]>[0]>[0];
 
 /**
  * Sets the PostgreSQL session variables that RLS policies read.
@@ -15,10 +15,7 @@ type DB = PostgresJsDatabase<typeof schema>;
  * that transaction only — it resets automatically on COMMIT/ROLLBACK.
  */
 export async function setRlsContext(
-  tx: PgTransaction<
-    Record<string, never>,
-    ExtractTablesWithRelations<typeof schema>
-  >,
+  tx: Tx,
   context: { companyId: string; userId: string }
 ): Promise<void> {
   await tx.execute(
@@ -34,15 +31,10 @@ export async function setRlsContext(
 export async function withRls<T>(
   db: DB,
   context: { companyId: string; userId: string },
-  callback: (
-    tx: Parameters<Parameters<DB["transaction"]>[0]>[0]
-  ) => Promise<T>
+  callback: (tx: Tx) => Promise<T>
 ): Promise<T> {
   return db.transaction(async (tx) => {
-    await setRlsContext(
-      tx as Parameters<typeof setRlsContext>[0],
-      context
-    );
+    await setRlsContext(tx, context);
     return callback(tx);
   });
 }

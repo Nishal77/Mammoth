@@ -1,6 +1,6 @@
 import type { Server as HttpServer } from "node:http";
 import { Server as SocketServer } from "socket.io";
-import Redis from "ioredis";
+import { Redis } from "ioredis";
 import type { MammothEvent } from "@mammoth/shared/events";
 import { SOCKET_EVENT_CHANNEL_PREFIX } from "@mammoth/memory-database";
 import { auth } from "./auth.ts";
