@@ -1,49 +1,12 @@
 import inquirer from "inquirer";
-import fs from "node:fs";
-import path from "node:path";
-import ora from "ora";
 import chalk from "chalk";
-import { writeConfig, getMammothDir } from "../lib/config.js";
+import ora from "ora";
+import { writeConfig, readConfig, type SetupMode } from "../lib/config.js";
 import { logger } from "../lib/logger.js";
-import {
-  checkDockerRunning,
-  pullImages,
-  startServices,
-  getServiceStatuses,
-  ensureComposeFile,
-} from "../docker/compose-runner.js";
+import { runCloudSetup } from "./setup-cloud.js";
+import { runLocalSetup } from "./setup-local.js";
 import { apiClient } from "../api/client.js";
 import { saveToken } from "../auth/token-store.js";
-
-const ENV_FILE = path.join(getMammothDir(), ".env");
-
-const REQUIRED_KEYS = [
-  {
-    key: "ANTHROPIC_API_KEY",
-    label: "Anthropic API key",
-    hint: "Get it at console.anthropic.com",
-    prefix: "sk-ant-",
-  },
-  {
-    key: "OPENAI_API_KEY",
-    label: "OpenAI API key",
-    hint: "Used for embeddings — get it at platform.openai.com",
-    prefix: "sk-",
-  },
-];
-
-const OPTIONAL_KEYS = [
-  { key: "EXA_API_KEY", label: "Exa API key", hint: "Web search for agents — exa.ai" },
-  { key: "APOLLO_API_KEY", label: "Apollo API key", hint: "B2B lead database — apollo.io" },
-  { key: "RESEND_API_KEY", label: "Resend API key", hint: "Email sending — resend.com" },
-];
-
-function writeEnvFile(values: Record<string, string>): void {
-  const lines = Object.entries(values)
-    .filter(([, v]) => v.length > 0)
-    .map(([k, v]) => `${k}=${v}`);
-  fs.writeFileSync(ENV_FILE, lines.join("\n") + "\n", { mode: 0o600 });
-}
 
 async function waitForApi(apiUrl: string, maxAttempts = 20): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
@@ -62,174 +25,216 @@ async function waitForApi(apiUrl: string, maxAttempts = 20): Promise<boolean> {
 
 function printBanner(): void {
   console.clear();
-  console.log(chalk.bold.white("\n  MAMMOTH Setup\n"));
-  console.log(chalk.dim("  Sets up your AI company OS in 3 steps:"));
-  console.log(chalk.dim("  1. Enter API keys"));
-  console.log(chalk.dim("  2. Start infrastructure (Docker)"));
-  console.log(chalk.dim("  3. Create your account\n"));
+  console.log();
+  console.log(chalk.bold.white("  MAMMOTH Setup"));
+  console.log(chalk.dim("  AI Company OS — mammoth.run\n"));
 }
 
-export async function runInit(): Promise<void> {
-  printBanner();
+async function collectApiKeys(): Promise<{
+  anthropicKey: string;
+  openaiKey: string;
+  extraKeys: Record<string, string>;
+}> {
+  console.log(chalk.bold("\n  API Keys\n"));
+  console.log(chalk.dim("  MAMMOTH needs two keys to run agents.\n"));
 
-  // Step 0: Docker check
-  const dockerRunning = await checkDockerRunning();
-  if (!dockerRunning) {
-    logger.error("Docker is not running.");
-    console.log(chalk.dim("\n  Get Docker Desktop: https://mammoth.run/docker"));
-    console.log(chalk.dim("  Then run: mammoth init\n"));
-    process.exit(1);
-  }
+  console.log(chalk.dim("  Get it at: console.anthropic.com → API Keys"));
+  const { anthropicKey } = await inquirer.prompt<{ anthropicKey: string }>([
+    {
+      type: "password",
+      name: "anthropicKey",
+      message: "  Anthropic API key:",
+      validate: (v: string) =>
+        v.startsWith("sk-ant-") || "Should start with sk-ant-",
+    },
+  ]);
 
-  // Already set up?
-  if (fs.existsSync(ENV_FILE)) {
-    const { redo } = await inquirer.prompt<{ redo: boolean }>([
-      {
-        type: "confirm",
-        name: "redo",
-        message: "MAMMOTH is already configured. Re-run setup?",
-        default: false,
-      },
-    ]);
-    if (!redo) {
-      const startSpinner = ora("Starting services").start();
-      await startServices();
-      startSpinner.succeed("Services running — MAMMOTH is ready");
-      return;
-    }
-  }
+  console.log();
+  console.log(chalk.dim("  Get it at: platform.openai.com → API Keys"));
+  const { openaiKey } = await inquirer.prompt<{ openaiKey: string }>([
+    {
+      type: "password",
+      name: "openaiKey",
+      message: "  OpenAI API key (for embeddings):",
+      validate: (v: string) =>
+        v.startsWith("sk-") || "Should start with sk-",
+    },
+  ]);
 
-  // Step 1: API keys
-  console.log(chalk.bold.white("\n  Step 1 of 3 — API Keys\n"));
-
-  const envValues: Record<string, string> = {};
-
-  for (const { key, label, hint, prefix } of REQUIRED_KEYS) {
-    console.log(chalk.dim(`  Hint: ${hint}`));
-    const { value } = await inquirer.prompt<{ value: string }>([
-      {
-        type: "password",
-        name: "value",
-        message: `  ${label}:`,
-        validate: (v: string) => {
-          if (v.length === 0) return `${label} is required`;
-          if (prefix && !v.startsWith(prefix)) return `Should start with ${prefix}`;
-          return true;
-        },
-      },
-    ]);
-    envValues[key] = value;
-    console.log();
-  }
-
-  const { addOptional } = await inquirer.prompt<{ addOptional: boolean }>([
+  console.log();
+  const { addMore } = await inquirer.prompt<{ addMore: boolean }>([
     {
       type: "confirm",
-      name: "addOptional",
-      message: "  Add optional keys now? (Exa web search, Apollo leads, Resend email)",
+      name: "addMore",
+      message: "  Add optional keys? (Exa search, Apollo leads, Resend email)",
       default: false,
     },
   ]);
 
-  if (addOptional) {
-    for (const { key, label, hint } of OPTIONAL_KEYS) {
-      console.log(chalk.dim(`  Hint: ${hint}`));
-      const { value } = await inquirer.prompt<{ value: string }>([
-        {
-          type: "password",
-          name: "value",
-          message: `  ${label} (Enter to skip):`,
-          default: "",
-        },
-      ]);
-      if (value) envValues[key] = value;
-      console.log();
-    }
+  const extraKeys: Record<string, string> = {};
+
+  if (addMore) {
+    const optional = await inquirer.prompt<{
+      exaKey: string;
+      apolloKey: string;
+      resendKey: string;
+    }>([
+      {
+        type: "password",
+        name: "exaKey",
+        message: "  Exa API key (exa.ai) — leave blank to skip:",
+        default: "",
+      },
+      {
+        type: "password",
+        name: "apolloKey",
+        message: "  Apollo API key (apollo.io) — leave blank to skip:",
+        default: "",
+      },
+      {
+        type: "password",
+        name: "resendKey",
+        message: "  Resend API key (resend.com) — leave blank to skip:",
+        default: "",
+      },
+    ]);
+    if (optional.exaKey) extraKeys["EXA_API_KEY"] = optional.exaKey;
+    if (optional.apolloKey) extraKeys["APOLLO_API_KEY"] = optional.apolloKey;
+    if (optional.resendKey) extraKeys["RESEND_API_KEY"] = optional.resendKey;
   }
 
-  // Admin account
-  console.log(chalk.bold.white("\n  Your account\n"));
-  const { adminEmail, adminPassword } = await inquirer.prompt<{
-    adminEmail: string;
-    adminPassword: string;
-  }>([
+  return { anthropicKey, openaiKey, extraKeys };
+}
+
+async function collectAccount(): Promise<{
+  email: string;
+  password: string;
+}> {
+  console.log(chalk.bold("\n  Your Account\n"));
+
+  return inquirer.prompt<{ email: string; password: string }>([
     {
       type: "input",
-      name: "adminEmail",
+      name: "email",
       message: "  Email address:",
       validate: (v: string) => v.includes("@") || "Enter a valid email",
     },
     {
       type: "password",
-      name: "adminPassword",
+      name: "password",
       message: "  Password (min 8 characters):",
       validate: (v: string) => v.length >= 8 || "Minimum 8 characters",
     },
   ]);
+}
 
-  // Step 2: Infrastructure
-  console.log(chalk.bold.white("\n  Step 2 of 3 — Starting Infrastructure\n"));
+export async function runInit(forcedMode?: SetupMode): Promise<void> {
+  printBanner();
 
-  ensureComposeFile();
-  writeConfig({ apiUrl: "http://localhost:4000", setupComplete: false });
-  writeEnvFile(envValues);
+  const config = readConfig();
 
-  const pullSpinner = ora("  Pulling Docker images (first run may take 2-3 minutes)").start();
-  try {
-    await pullImages();
-    pullSpinner.succeed("  Images ready");
-  } catch {
-    pullSpinner.warn("  Image pull had warnings — continuing");
+  // Already configured — offer re-run
+  if (config.setupComplete && !forcedMode) {
+    const { redo } = await inquirer.prompt<{ redo: boolean }>([
+      {
+        type: "confirm",
+        name: "redo",
+        message: "  MAMMOTH is already set up. Re-run setup?",
+        default: false,
+      },
+    ]);
+    if (!redo) {
+      logger.info("Run 'mammoth start' to start services.");
+      return;
+    }
   }
 
-  const startSpinner = ora("  Starting Postgres, Redis, Qdrant, MinIO").start();
-  try {
-    await startServices();
-    startSpinner.succeed("  Infrastructure running");
-  } catch (err) {
-    startSpinner.fail("  Failed to start services");
-    logger.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+  // ── Mode selection ──────────────────────────────────────────────────────────
+  let mode: SetupMode;
+
+  if (forcedMode) {
+    mode = forcedMode;
+  } else {
+    console.log(chalk.bold("\n  How do you want to run MAMMOTH?\n"));
+    console.log(
+      chalk.white("  Cloud ") +
+        chalk.dim("(recommended)") +
+        chalk.dim(" — no Docker needed, uses free cloud services, ready in 3 minutes")
+    );
+    console.log(
+      chalk.white("  Local ") +
+        chalk.dim("               — everything on your machine, Docker required\n")
+    );
+
+    const { selectedMode } = await inquirer.prompt<{
+      selectedMode: SetupMode;
+    }>([
+      {
+        type: "list",
+        name: "selectedMode",
+        message: "  Choose setup mode:",
+        choices: [
+          { name: "Cloud  (recommended — no Docker)", value: "cloud" },
+          { name: "Local  (Docker required, full control)", value: "local" },
+        ],
+      },
+    ]);
+    mode = selectedMode;
   }
 
-  // Show what's running
-  const statuses = await getServiceStatuses();
-  for (const svc of statuses) {
-    const icon = svc.status === "running" ? chalk.green("+") : chalk.red("-");
-    console.log(`    ${icon} ${svc.name}`);
+  writeConfig({ mode });
+
+  // ── API keys ────────────────────────────────────────────────────────────────
+  const { anthropicKey, openaiKey, extraKeys } = await collectApiKeys();
+
+  // ── Mode-specific setup ─────────────────────────────────────────────────────
+  console.log(chalk.bold(`\n  Setting up ${mode === "cloud" ? "Cloud" : "Local"} infrastructure\n`));
+
+  if (mode === "cloud") {
+    await runCloudSetup(anthropicKey, openaiKey, extraKeys);
+  } else {
+    await runLocalSetup(anthropicKey, openaiKey, extraKeys);
   }
 
-  // Step 3: Account
-  console.log(chalk.bold.white("\n  Step 3 of 3 — Creating Account\n"));
+  // ── Account setup ───────────────────────────────────────────────────────────
+  const { email, password } = await collectAccount();
 
-  const apiSpinner = ora("  Waiting for API server").start();
-  const apiReady = await waitForApi("http://localhost:4000");
+  // ── Wait for API ────────────────────────────────────────────────────────────
+  const apiSpinner = ora("  Waiting for API server to start").start();
+  const apiUrl = config.apiUrl ?? "http://localhost:4000";
+  const apiReady = await waitForApi(apiUrl);
+
   if (!apiReady) {
-    apiSpinner.warn("  API not responding — start it manually: pnpm --filter @mammoth/api dev");
-    apiSpinner.warn("  Then run: mammoth auth login");
+    apiSpinner.warn("  API not responding yet");
+    logger.dim("  Start it manually:");
+    if (mode === "local") {
+      logger.dim("    pnpm --filter @mammoth/api dev");
+    } else {
+      logger.dim("    Start the MAMMOTH API server, then run: mammoth auth login");
+    }
   } else {
     apiSpinner.succeed("  API ready");
 
     const authSpinner = ora("  Creating account").start();
     try {
-      const authResult = await apiClient.signIn(adminEmail, adminPassword);
-      saveToken(authResult.token, adminEmail);
-      authSpinner.succeed(`  Signed in as ${adminEmail}`);
+      const authResult = await apiClient.signIn(email, password);
+      saveToken(authResult.token, email);
+      authSpinner.succeed(`  Signed in as ${email}`);
     } catch {
-      authSpinner.warn("  Account creation failed — run: mammoth auth login");
+      authSpinner.warn("  Could not create session — run: mammoth auth login");
     }
   }
 
   writeConfig({ setupComplete: true });
 
-  // Done
+  // ── Done ────────────────────────────────────────────────────────────────────
   console.log();
-  console.log(
-    chalk.bold.white("  MAMMOTH is ready.\n")
-  );
-  console.log(chalk.dim("  mammoth status             check everything is running"));
-  console.log(chalk.dim("  mammoth approve list       review pending AI actions"));
-  console.log(chalk.dim("  mammoth trigger marketing  fire the marketing agent"));
-  console.log(chalk.dim("  mammoth doctor             run health checks"));
+  console.log(chalk.bold.green("  MAMMOTH is ready.\n"));
+  console.log(chalk.dim("  mammoth status          — check everything running"));
+  console.log(chalk.dim("  mammoth approve list    — review pending AI actions"));
+  console.log(chalk.dim("  mammoth trigger sales   — fire the sales agent"));
+  console.log(chalk.dim("  mammoth doctor          — run health checks"));
+  console.log();
+  console.log(chalk.dim("  Open dashboard: http://localhost:3000"));
   console.log();
 }

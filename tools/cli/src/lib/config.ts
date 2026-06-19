@@ -5,8 +5,10 @@ import path from "node:path";
 const MAMMOTH_DIR = path.join(os.homedir(), ".mammoth");
 const CONFIG_FILE = path.join(MAMMOTH_DIR, "config.json");
 
+export type SetupMode = "cloud" | "local";
+
 export type MammothConfig = {
-  projectRoot: string | null;
+  mode: SetupMode | null;
   apiUrl: string;
   authToken: string | null;
   authEmail: string | null;
@@ -14,7 +16,7 @@ export type MammothConfig = {
 };
 
 const DEFAULT_CONFIG: MammothConfig = {
-  projectRoot: null,
+  mode: null,
   apiUrl: "http://localhost:4000",
   authToken: null,
   authEmail: null,
@@ -30,7 +32,6 @@ function ensureDir(): void {
 export function readConfig(): MammothConfig {
   ensureDir();
   if (!fs.existsSync(CONFIG_FILE)) return { ...DEFAULT_CONFIG };
-
   try {
     const raw = fs.readFileSync(CONFIG_FILE, "utf-8");
     return { ...DEFAULT_CONFIG, ...JSON.parse(raw) } as MammothConfig;
@@ -41,18 +42,39 @@ export function readConfig(): MammothConfig {
 
 export function writeConfig(updates: Partial<MammothConfig>): void {
   ensureDir();
-  const current = readConfig();
-  const next = { ...current, ...updates };
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(next, null, 2), {
-    mode: 0o600,
-  });
-}
-
-export function clearConfig(): void {
-  if (fs.existsSync(CONFIG_FILE)) fs.unlinkSync(CONFIG_FILE);
+  const next = { ...readConfig(), ...updates };
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(next, null, 2), { mode: 0o600 });
 }
 
 export function getMammothDir(): string {
   ensureDir();
   return MAMMOTH_DIR;
+}
+
+export function getEnvFilePath(): string {
+  return path.join(MAMMOTH_DIR, ".env");
+}
+
+export function writeEnvFile(values: Record<string, string>): void {
+  ensureDir();
+  const lines = Object.entries(values)
+    .filter(([, v]) => v.length > 0)
+    .map(([k, v]) => `${k}=${v}`);
+  fs.writeFileSync(getEnvFilePath(), lines.join("\n") + "\n", { mode: 0o600 });
+}
+
+export function readEnvFile(): Record<string, string> {
+  const envPath = getEnvFilePath();
+  if (!fs.existsSync(envPath)) return {};
+  const lines = fs.readFileSync(envPath, "utf-8").split("\n");
+  const result: Record<string, string> = {};
+  for (const line of lines) {
+    const eq = line.indexOf("=");
+    if (eq > 0) {
+      const key = line.slice(0, eq).trim();
+      const val = line.slice(eq + 1).trim();
+      if (key) result[key] = val;
+    }
+  }
+  return result;
 }

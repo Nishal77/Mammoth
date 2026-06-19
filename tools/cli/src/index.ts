@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { readConfig, writeConfig } from "./lib/config.js";
+import { readConfig, writeConfig, type SetupMode } from "./lib/config.js";
 import { logger } from "./lib/logger.js";
 import { runInit } from "./commands/init.js";
 import { runStart } from "./commands/start.js";
@@ -29,22 +29,24 @@ program
   .name("mammoth")
   .description("MAMMOTH — AI Company OS management CLI")
   .version(VERSION)
-  .option("--project-root <path>", "Override project root directory");
+  .option("--project-root <path>", "Legacy flag — no-op, kept for compatibility");
 
-// Resolve --project-root before any subcommand runs
 program.hook("preAction", (_, actionCommand) => {
-  const opts = program.opts<{ projectRoot?: string }>();
-  if (opts.projectRoot) {
-    writeConfig({ projectRoot: opts.projectRoot });
-  }
   void actionCommand;
 });
 
 // ── mammoth init ──────────────────────────────────────────────────
 program
   .command("init")
-  .description("First-time setup: configure env, pull Docker images, run migrations")
-  .action(() => runInit().catch(handleError));
+  .description("First-time setup: pick Cloud or Local, configure services, save API keys")
+  .option("--cloud", "Skip mode prompt — use Cloud setup (Neon + Upstash)")
+  .option("--local", "Skip mode prompt — use Local setup (Docker)")
+  .action((opts: { cloud?: boolean; local?: boolean }) => {
+    let mode: SetupMode | undefined;
+    if (opts.cloud) mode = "cloud";
+    else if (opts.local) mode = "local";
+    runInit(mode).catch(handleError);
+  });
 
 // ── mammoth start ─────────────────────────────────────────────────
 program
@@ -161,7 +163,7 @@ configCmd
   .command("set <key> <value>")
   .description("Set a config value (e.g. apiUrl http://localhost:4000)")
   .action((key: string, value: string) => {
-    const allowed: Array<keyof ReturnType<typeof readConfig>> = ["apiUrl", "projectRoot"];
+    const allowed: Array<keyof ReturnType<typeof readConfig>> = ["apiUrl"];
     if (!allowed.includes(key as keyof ReturnType<typeof readConfig>)) {
       logger.error(`Unknown key "${key}". Allowed: ${allowed.join(", ")}`);
       process.exit(1);

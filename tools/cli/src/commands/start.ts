@@ -1,4 +1,6 @@
 import ora from "ora";
+import chalk from "chalk";
+import { readConfig } from "../lib/config.js";
 import { logger } from "../lib/logger.js";
 import {
   checkDockerRunning,
@@ -22,9 +24,18 @@ async function waitForHealthy(maxWait = 60_000): Promise<void> {
 }
 
 export async function runStart(): Promise<void> {
+  const config = readConfig();
+
+  if (config.mode === "cloud") {
+    logger.info("Cloud mode — infrastructure runs on Neon + Upstash.");
+    logger.dim("Nothing to start locally.");
+    logger.dim("Run 'mammoth status' to check connectivity.");
+    return;
+  }
+
   const dockerOk = await checkDockerRunning();
   if (!dockerOk) {
-    logger.error("Docker is not running. Start Docker Desktop first.");
+    logger.error("Docker not running. Start Docker Desktop / OrbStack first.");
     process.exit(1);
   }
 
@@ -44,7 +55,7 @@ export async function runStart(): Promise<void> {
   logger.blank();
   logger.header("Service Status");
   for (const svc of statuses) {
-    const icon = svc.status === "running" ? "+" : "-";
+    const icon = svc.status === "running" ? chalk.green("+") : chalk.red("-");
     const health = svc.health !== "none" ? ` [${svc.health}]` : "";
     console.log(`  ${icon}  ${svc.name.padEnd(15)} ${svc.status}${health}`);
   }

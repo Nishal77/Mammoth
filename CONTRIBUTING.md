@@ -6,6 +6,50 @@ Open an issue before writing code for anything non-trivial. This avoids duplicat
 
 ---
 
+## Developer quickstart (clone → running in 5 minutes)
+
+```bash
+# 1. Clone
+git clone https://github.com/your-org/mammoth.git
+cd mammoth
+
+# 2. Install all dependencies
+pnpm install
+
+# 3. Copy and fill in environment variables
+cp .env.example .env
+# Edit .env — minimum needed:
+#   ANTHROPIC_API_KEY=sk-ant-...
+#   OPENAI_API_KEY=sk-...
+#   DATABASE_URL=postgresql://mammoth:mammoth_dev@localhost:5432/mammoth
+#   REDIS_URL=redis://localhost:6379
+
+# 4. Start infrastructure (Postgres, Redis, Qdrant, MinIO)
+docker compose -f infrastructure/docker/docker-compose.dev.yml up -d
+
+# 5. Run migrations
+pnpm db:migrate
+
+# 6. Start everything in watch mode
+pnpm dev
+```
+
+Dashboard → http://localhost:3000  
+API → http://localhost:4000
+
+**CLI development** — work on the `mammoth` CLI without publishing:
+
+```bash
+cd tools/cli
+pnpm build            # compile to dist/
+node dist/index.js init    # test locally
+# or link globally:
+npm link
+mammoth init
+```
+
+---
+
 ## Setup
 
 See the [README](README.md) for full setup instructions. Once the dev environment is running:
