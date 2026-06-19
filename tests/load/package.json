@@ -1,0 +1,15 @@
+{
+  "name": "@mammoth/load-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "k6 load tests for the MAMMOTH API",
+  "scripts": {
+    "smoke": "k6 run k6/smoke.js",
+    "load": "k6 run k6/load.js",
+    "stress": "k6 run k6/stress.js",
+    "smoke:staging": "k6 run -e BASE_URL=https://api.staging.mammoth.ai k6/smoke.js",
+    "load:staging": "k6 run -e BASE_URL=https://api.staging.mammoth.ai k6/load.js",
+    "smoke:ci": "k6 run --out json=results/smoke.json k6/smoke.js",
+    "load:ci": "k6 run --out json=results/load.json k6/load.js"
+  }
+}
