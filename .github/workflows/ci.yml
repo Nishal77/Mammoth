@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs for the same branch/PR so pushes don't queue up.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Turbo remote cache — speeds up repeat CI runs by reusing build outputs.
+  # Set TURBO_TOKEN + TURBO_TEAM in repo secrets to enable.
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+jobs:
+  # ── Typecheck ─────────────────────────────────────────────────────────────
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.14.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck all packages
+        run: pnpm typecheck
+
+  # ── Unit + Integration Tests ───────────────────────────────────────────────
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    env:
+      # All of these are consumed by vitest.setup.ts — no real services needed.
+      # External APIs (DB, Redis, BullMQ, better-auth) are fully mocked in tests.
+      BETTER_AUTH_SECRET: ci-test-secret-not-used-in-production
+      DATABASE_URL: postgresql://test:test@localhost:5432/test
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      ANTHROPIC_API_KEY: sk-test-not-real
+      MAX_AGENT_COST_PER_DAY_USD: "50"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.14.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run all tests
+        run: pnpm test
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            apps/api/coverage/
+            packages/shared/coverage/
+            packages/observability/coverage/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ── Lint (agents import-restriction rules) ─────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.14.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint agents (import-restriction rules)
+        working-directory: agents
+        run: |
+          pnpm dlx eslint \
+            "content/src/**/*.ts" \
+            "engineering/src/**/*.ts" \
+            "executive/src/**/*.ts" \
+            "finance/src/**/*.ts" \
+            "hr/src/**/*.ts" \
+            "marketing/src/**/*.ts" \
+            "research/src/**/*.ts" \
+            "sales/src/**/*.ts" \
+            "support/src/**/*.ts" \
+            --max-warnings 0

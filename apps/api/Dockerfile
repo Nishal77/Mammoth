@@ -3,28 +3,29 @@ ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable && corepack prepare pnpm@9.14.4 --activate
 
-# ── deps: install all workspace dependencies ──────────────────────────────────
+# ── pruner: use turbo prune to get a minimal workspace for this service ────────
+FROM base AS pruner
+WORKDIR /app
+RUN pnpm add -g turbo@2
+COPY . .
+RUN turbo prune @mammoth/api --docker
+
+# ── deps: install only the pruned workspace's dependencies ────────────────────
 FROM base AS deps
 WORKDIR /app
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY apps/api/package.json ./apps/api/
-COPY packages/db/package.json ./packages/db/
-COPY packages/shared/package.json ./packages/shared/
-COPY packages/config/typescript-config/package.json ./packages/config/typescript-config/
+COPY --from=pruner /app/out/json/ .
+COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
 RUN pnpm install --frozen-lockfile
 
-# ── builder: compile with tsup (bundles @mammoth/* workspace deps inline) ─────
+# ── builder: compile with tsup ────────────────────────────────────────────────
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
-COPY . .
+COPY --from=pruner /app/out/full/ .
 RUN pnpm --filter @mammoth/api build
-
-# pnpm deploy creates a standalone dir with only production node_modules
 RUN pnpm --filter @mammoth/api deploy --prod /deploy/api
 
-# ── runner ────────────────────────────────────────────────────────────────────
+# ── runner: minimal production image ──────────────────────────────────────────
 FROM node:20-alpine AS runner
 RUN addgroup --system --gid 1001 mammoth && adduser --system --uid 1001 mammoth
 WORKDIR /app
