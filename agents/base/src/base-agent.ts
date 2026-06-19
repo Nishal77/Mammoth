@@ -5,6 +5,8 @@ import { retrieveKnowledge, formatKnowledgeContext } from "@mammoth/knowledge-in
 import { evaluateOutput } from "@mammoth/eval-output-quality";
 import { callModel, MODELS } from "./model-router.ts";
 import { captureOutcome } from "./outcome-capturer.ts";
+import { routeTask } from "./task-router.js";
+import type { TaskRoute } from "./task-router.js";
 import {
   validateCompanyId,
   auditLog,
@@ -68,6 +70,8 @@ export abstract class BaseAgent {
   protected companyCtx!: CompanyContext;
   protected runCtx!: AgentRunContext;
   protected knowledgeContext = "";
+  /** Set at the start of each run — drives model, token budget, and context scope. */
+  protected currentTaskRoute!: TaskRoute;
 
   constructor(departmentName: string, defaultModel: ModelId = MODELS.HAIKU) {
     this.departmentName = departmentName;
@@ -94,10 +98,14 @@ export abstract class BaseAgent {
     await this.markTaskRunning();
 
     try {
-      // ── 1. Load structured + semantic memory ─────────────────────────────────
-      this.companyCtx = await loadCompanyContext(runCtx.companyId);
+      // ── 1. Route task — selects model, token budget, and context scope ───────
+      // Done first so every subsequent step uses the right settings.
+      this.currentTaskRoute = routeTask(taskInput.taskType);
 
-      // ── 2. Load relevant knowledge docs (SOPs, playbooks, pricing) ───────────
+      // ── 2. Load structured + semantic memory (scoped to this task) ───────────
+      this.companyCtx = await loadCompanyContext(runCtx.companyId, this.currentTaskRoute.contextScope);
+
+      // ── 3. Load relevant knowledge docs (SOPs, playbooks, pricing) ───────────
       const knowledgeChunks = await retrieveKnowledge({
         companyId: runCtx.companyId,
         query: `${this.departmentName} ${taskInput.taskType.replace(/_/g, " ")}`,
@@ -105,7 +113,7 @@ export abstract class BaseAgent {
       });
       this.knowledgeContext = formatKnowledgeContext(knowledgeChunks);
 
-      // ── 3. Execute the department-specific task ───────────────────────────────
+      // ── 4. Execute the department-specific task ───────────────────────────────
       let output = await this.execute(taskInput);
 
       // ── 4. Policy gate — enforced on every output, no exceptions ─────────────
@@ -347,7 +355,10 @@ ${this.knowledgeContext ? this.knowledgeContext : ""}`;
     // Hard stop before spending any tokens — checked on every LLM call
     await this.guardDailyCostCap();
 
-    const model = options.model ?? this.defaultModel;
+    // Priority: explicit override → task route → agent default
+    const model = options.model ?? this.currentTaskRoute?.model ?? this.defaultModel;
+    const maxTokens = options.maxTokens ?? this.currentTaskRoute?.maxOutputTokens ?? 2048;
+    const cacheSystemPrompt = this.currentTaskRoute?.cacheSystemPrompt ?? true;
 
     let userContent = options.userMessage;
     if (options.externalData) {
@@ -366,8 +377,9 @@ Process the external data above according to your task instruction.`;
       systemPrompt: options.systemPrompt,
       messages: [{ role: "user", content: userContent }],
       companyId: this.runCtx.companyId,
+      maxTokens,
+      cacheSystemPrompt,
     };
-    if (options.maxTokens !== undefined) callOptions.maxTokens = options.maxTokens;
 
     const result = await callModel(callOptions);
 

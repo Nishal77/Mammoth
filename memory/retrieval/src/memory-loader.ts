@@ -1,7 +1,47 @@
 import { db, companyMemory, companies } from "@mammoth/memory-database";
-import { eq, and, isNull, or, desc, gt } from "drizzle-orm";
+import { eq, and, isNull, or, desc, gt, inArray } from "drizzle-orm";
 import { NotFoundError } from "@mammoth/shared/errors";
 import { semanticSearch } from "./semantic-search.ts";
+import type { MemoryType } from "@mammoth/memory-database";
+
+export type ContextScope = "minimal" | "standard" | "full";
+
+type ScopeConfig = {
+  /** Only load these memory types. Reduces DB rows and prompt tokens. */
+  types: MemoryType[];
+  /** Max rows across all types. */
+  rowLimit: number;
+  /** Max chars per section — each section is truncated independently. */
+  sectionCharBudget: number;
+  /** Run semantic search on the active goal. Full/standard only. */
+  runSemanticSearch: boolean;
+  /** How many semantic results to retrieve. */
+  semanticTopK: number;
+};
+
+const SCOPE_CONFIG: Record<ContextScope, ScopeConfig> = {
+  minimal: {
+    types: ["identity", "playbook_refinement"],
+    rowLimit: 10,
+    sectionCharBudget: 600,
+    runSemanticSearch: false,
+    semanticTopK: 0,
+  },
+  standard: {
+    types: ["identity", "icp", "competitor", "product_lesson", "playbook_refinement", "decision_log"],
+    rowLimit: 60,
+    sectionCharBudget: 1200,
+    runSemanticSearch: true,
+    semanticTopK: 3,
+  },
+  full: {
+    types: ["identity", "brand_voice", "icp", "competitor", "customer_insight", "market_intel", "product_lesson", "playbook_refinement", "sop", "pricing", "decision_log"],
+    rowLimit: 200,
+    sectionCharBudget: 2000,
+    runSemanticSearch: true,
+    semanticTopK: 5,
+  },
+};
 
 export type CompanyContext = {
   companyId: string;
@@ -31,13 +71,25 @@ export type CompanyContext = {
 };
 
 /**
- * Loads structured company memory for injection into agent prompts.
- * Fetches up to 500 memory rows plus a semantic search pass on the active goal.
- * Agents always get both structural memory (DB) and relevant semantic memory (Qdrant).
+ * Loads structured company memory scoped to the task being run.
+ *
+ * scope="minimal"  — identity + playbook only (≤10 rows). Lead scoring,
+ *                    ticket resolution, simple classification tasks.
+ * scope="standard" — + ICP, competitors, lessons (≤60 rows). Most tasks.
+ * scope="full"     — all types (≤200 rows). CEO Brain, research, long-form.
+ *
+ * The scope is derived from routeTask() in task-router.ts — callers should
+ * never hard-code "full" without justification.
+ *
+ * @param companyId - Company to load context for
+ * @param scope     - Context scope — defaults to "standard"
  */
 export async function loadCompanyContext(
-  companyId: string
+  companyId: string,
+  scope: ContextScope = "standard"
 ): Promise<CompanyContext> {
+  const cfg = SCOPE_CONFIG[scope];
+
   const [company, memoryRows, goalRow] = await Promise.all([
     db.query.companies.findFirst({
       where: and(eq(companies.id, companyId), isNull(companies.deletedAt)),
@@ -53,6 +105,7 @@ export async function loadCompanyContext(
     db.query.companyMemory.findMany({
       where: and(
         eq(companyMemory.companyId, companyId),
+        inArray(companyMemory.memoryType, cfg.types),
         or(isNull(companyMemory.expiresAt), gt(companyMemory.expiresAt, new Date()))
       ),
       columns: {
@@ -63,7 +116,7 @@ export async function loadCompanyContext(
         updatedAt: true,
       },
       orderBy: [desc(companyMemory.updatedAt)],
-      limit: 500,
+      limit: cfg.rowLimit,
     }),
     db.query.companyGoals.findFirst({
       where: (g, { eq: geq, and: gand }) =>
@@ -84,16 +137,15 @@ export async function loadCompanyContext(
     memoryRows
       .filter((m) => m.memoryType === type)
       .slice(0, limit)
-      .map((m) => `[${m.key}] ${String(m.value).slice(0, 800)}`)
+      .map((m) => `[${m.key}] ${String(m.value).slice(0, cfg.sectionCharBudget)}`)
       .join("\n");
 
-  // Semantic search on the active goal for relevant memory not captured by exact type filters
   let semanticContext = "";
-  if (goalRow) {
+  if (cfg.runSemanticSearch && goalRow) {
     const query = `${goalRow.title} ${goalRow.targetValue}`;
-    const semanticResults = await semanticSearch(companyId, query, 5);
+    const semanticResults = await semanticSearch(companyId, query, cfg.semanticTopK);
     semanticContext = semanticResults
-      .map((r) => `[${r.memoryType}/${r.key}] ${r.value.slice(0, 400)}`)
+      .map((r) => `[${r.memoryType}/${r.key}] ${r.value.slice(0, cfg.sectionCharBudget)}`)
       .join("\n");
   }
 

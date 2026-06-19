@@ -13,14 +13,25 @@ export type UpsertMemoryOptions = {
   confidence?: number;
 };
 
+// Types where near-duplicate entries bloat context without adding signal.
+const DEDUP_MEMORY_TYPES = new Set(["product_lesson", "playbook_refinement"]);
+// Cosine similarity threshold above which a new entry is considered a duplicate.
+const DEDUP_SIMILARITY_THRESHOLD = 0.92;
+
 /**
  * Upserts a memory entry to Postgres and syncs the embedding to Qdrant.
- * Skips re-embedding when the content hash is unchanged (value not modified).
+ * For `product_lesson` and `playbook_refinement` types, skips the write when
+ * a semantically near-identical entry already exists (similarity ≥ 0.92).
+ * This prevents the context window from filling with redundant lessons over time.
  *
  * @param options - Memory entry details
- * @returns The persisted memory row id
+ * @returns The persisted memory row id, or existing row id when deduped
  */
 export async function upsertMemory(options: UpsertMemoryOptions): Promise<string> {
+  if (DEDUP_MEMORY_TYPES.has(options.memoryType)) {
+    const isDuplicate = await isNearDuplicate(options.companyId, options.value);
+    if (isDuplicate) return "deduped";
+  }
   const [row] = await db
     .insert(companyMemory)
     .values({
@@ -107,4 +118,25 @@ async function syncEmbedding(opts: {
     contentHash: opts.hash,
     qdrantPointId: opts.memoryId,
   });
+}
+
+/**
+ * Returns true when an existing memory entry in Qdrant has cosine similarity
+ * ≥ DEDUP_SIMILARITY_THRESHOLD with the candidate value.
+ * Fails open — if Qdrant is unavailable, returns false (allow write).
+ */
+async function isNearDuplicate(companyId: string, value: string): Promise<boolean> {
+  try {
+    await ensureMemoryCollection(companyId);
+    const vector = await embed(value);
+    const results = await qdrant.search(memoryCollectionName(companyId), {
+      vector,
+      limit: 1,
+      with_payload: false,
+      score_threshold: DEDUP_SIMILARITY_THRESHOLD,
+    });
+    return results.length > 0;
+  } catch {
+    return false;
+  }
 }
