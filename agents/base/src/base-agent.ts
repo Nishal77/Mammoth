@@ -1,11 +1,19 @@
 import { db, departmentTasks, taskRuns, agentRuns, approvals, companies, publishNotification } from "@mammoth/memory-database";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, gte } from "drizzle-orm";
 import { loadCompanyContext, formatContextForDepartment } from "@mammoth/memory-retrieval";
 import { retrieveKnowledge, formatKnowledgeContext } from "@mammoth/knowledge-ingestion";
 import { evaluateOutput } from "@mammoth/eval-output-quality";
 import { callModel, MODELS } from "./model-router.ts";
 import { captureOutcome } from "./outcome-capturer.ts";
-import { validateCompanyId, auditLog } from "@mammoth/eval-policy";
+import {
+  validateCompanyId,
+  auditLog,
+  assertRingLevelValid,
+  enforceOutputPolicy,
+  type PolicyCheckableOutput,
+} from "@mammoth/eval-policy";
+import { AgentCostLimitError } from "@mammoth/shared/errors";
+import { PolicyViolationError } from "@mammoth/eval-policy";
 import type { ModelId, ModelCallResult } from "./model-router.ts";
 import type { CompanyContext } from "@mammoth/memory-retrieval";
 import type { ContentType } from "@mammoth/eval-output-quality";
@@ -35,10 +43,12 @@ export type AgentTaskOutput = {
   emailSubject?: string;
 };
 
+const MAX_DAILY_COST_USD = Number(process.env["MAX_AGENT_COST_PER_DAY_USD"] ?? 50);
+
 /**
  * Abstract base class for all MAMMOTH department agents.
  * Handles: context loading, knowledge retrieval, model calls, cost tracking,
- * run lifecycle, evaluation gating, and task status updates.
+ * run lifecycle, evaluation gating, and policy enforcement.
  * Subclasses implement execute() only.
  *
  * Execution flow per run:
@@ -46,9 +56,10 @@ export type AgentTaskOutput = {
  *  2. Load company memory (DB structured + Qdrant semantic)
  *  3. Load relevant knowledge docs (SOPs, playbooks, pricing) from Qdrant
  *  4. execute() — subclass does its work
- *  5. Evaluation gate — if output is publishable, run hallucination + brand + content checks
- *  6. If eval fails, escalate to Ring 3 regardless of agent's requested ring
- *  7. Save output, mark task, record cost outcome
+ *  5. Policy gate — enforceOutputPolicy() corrects ring levels, blocks permanently-blocked actions
+ *  6. Evaluation gate — if output is publishable, run hallucination + brand + content checks
+ *  7. If eval fails, escalate to Ring 3 regardless of agent's requested ring
+ *  8. Save output, mark task, record cost outcome
  */
 export abstract class BaseAgent {
   protected readonly departmentName: string;
@@ -86,8 +97,6 @@ export abstract class BaseAgent {
       this.companyCtx = await loadCompanyContext(runCtx.companyId);
 
       // ── 2. Load relevant knowledge docs (SOPs, playbooks, pricing) ───────────
-      // Query is built from the task type so the right docs surface.
-      // e.g. "send_email_campaign" → pulls email playbooks, brand guidelines
       const knowledgeChunks = await retrieveKnowledge({
         companyId: runCtx.companyId,
         query: `${this.departmentName} ${taskInput.taskType.replace(/_/g, " ")}`,
@@ -98,9 +107,31 @@ export abstract class BaseAgent {
       // ── 3. Execute the department-specific task ───────────────────────────────
       let output = await this.execute(taskInput);
 
-      // ── 4. Evaluation gate — runs before any external action is dispatched ────
-      // Only triggered when the agent declares a contentType (external publish).
-      // Internal analysis tasks (ceo_cycle, reporting) skip the eval gate.
+      // ── 4. Policy gate — enforced on every output, no exceptions ─────────────
+      // enforceOutputPolicy() corrects ring levels silently and throws only for
+      // PERMANENTLY_BLOCKED actions. All corrections are audit-logged below.
+      // This runs BEFORE the eval gate so escalations stack correctly.
+      const { _policyCorrections, ...enforcedOutput } = enforceOutputPolicy(
+        output as PolicyCheckableOutput,
+        this.departmentName.toLowerCase()
+      );
+
+      output = { ...output, ...enforcedOutput };
+
+      if (_policyCorrections.length > 0) {
+        auditLog({
+          event: "action.blocked",
+          companyId: runCtx.companyId,
+          actionType: output.actionType,
+          metadata: {
+            correctionCount: _policyCorrections.length,
+            corrections: JSON.stringify(_policyCorrections),
+            agentRunId: runCtx.agentRunId,
+          },
+        });
+      }
+
+      // ── 5. Evaluation gate — only for publishable content ────────────────────
       if (output.contentType && output.content.length > 50) {
         output = await this.runEvaluationGate(output);
       }
@@ -122,6 +153,24 @@ export abstract class BaseAgent {
 
       return output;
     } catch (error) {
+      // PolicyViolationError must not be retried — re-throw as-is
+      // so the worker can dead-letter the job.
+      if (error instanceof PolicyViolationError) {
+        auditLog({
+          event: "action.blocked",
+          companyId: runCtx.companyId,
+          actionType: taskInput.taskType,
+          metadata: {
+            policyCode: error.policyCode,
+            message: error.message,
+            agentRunId: runCtx.agentRunId,
+          },
+        });
+        await this.markTaskFailed(error.message);
+        await this.incrementAgentRunStats("failed");
+        throw error;
+      }
+
       const message = error instanceof Error ? error.message : String(error);
       await this.markTaskFailed(message);
       await this.incrementAgentRunStats("failed");
@@ -131,6 +180,47 @@ export abstract class BaseAgent {
 
   /** Subclasses implement this. */
   protected abstract execute(input: AgentTaskInput): Promise<AgentTaskOutput>;
+
+  /**
+   * Checks today's total AI spend for this company against the daily cap.
+   * Must be called before every LLM invocation.
+   *
+   * Throws AgentCostLimitError if cap is reached — the worker stops the run,
+   * marks it failed, and does not retry.
+   */
+  private async guardDailyCostCap(): Promise<void> {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const [row] = await db
+      .select({
+        total: sql<string>`COALESCE(SUM(${taskRuns.costUsd}::numeric), 0)::text`,
+      })
+      .from(taskRuns)
+      .innerJoin(departmentTasks, eq(taskRuns.taskId, departmentTasks.id))
+      .where(
+        and(
+          eq(departmentTasks.companyId, this.runCtx.companyId),
+          gte(taskRuns.createdAt, startOfDay)
+        )
+      );
+
+    const dailySpendUsd = parseFloat(row?.total ?? "0");
+
+    if (dailySpendUsd >= MAX_DAILY_COST_USD) {
+      auditLog({
+        event: "action.blocked",
+        companyId: this.runCtx.companyId,
+        actionType: "daily_cost_cap_exceeded",
+        metadata: {
+          dailySpendUsd: Number(dailySpendUsd.toFixed(4)),
+          capUsd: MAX_DAILY_COST_USD,
+          agentRunId: this.runCtx.agentRunId,
+        },
+      });
+      throw new AgentCostLimitError(this.runCtx.companyId);
+    }
+  }
 
   /**
    * Runs all three evaluators in parallel.
@@ -163,8 +253,6 @@ export abstract class BaseAgent {
     });
 
     if (evalSummary.blocked) {
-      // Evaluation failed — escalate to Ring 3 regardless of original ring level.
-      // Founder must explicitly approve. Use revised content if available.
       return {
         ...output,
         content: evalSummary.revisedContent ?? output.content,
@@ -184,7 +272,6 @@ export abstract class BaseAgent {
     }
 
     if (evalSummary.overallVerdict === "warn" && output.ringLevel === 1) {
-      // Warn + Ring 1 → bump to Ring 2 (4-hour founder veto window)
       return {
         ...output,
         content: evalSummary.revisedContent ?? output.content,
@@ -198,7 +285,6 @@ export abstract class BaseAgent {
       };
     }
 
-    // Pass — keep original ring, use revised content if evaluator improved it
     return {
       ...output,
       ...(evalSummary.revisedContent ? { content: evalSummary.revisedContent } : {}),
@@ -237,6 +323,7 @@ ${this.knowledgeContext ? this.knowledgeContext : ""}`;
 
   /**
    * Calls the LLM and persists the task run record with token/cost data.
+   * Checks the daily cost cap before every LLM call.
    * External data (emails, web content) must be wrapped in the externalData param.
    */
   protected async callLlm(options: {
@@ -247,6 +334,9 @@ ${this.knowledgeContext ? this.knowledgeContext : ""}`;
     externalData?: { source: string; content: string };
     runNumber?: number;
   }): Promise<ModelCallResult> {
+    // Hard stop before spending any tokens — checked on every LLM call
+    await this.guardDailyCostCap();
+
     const model = options.model ?? this.defaultModel;
 
     let userContent = options.userMessage;
@@ -290,6 +380,10 @@ Process the external data above according to your task instruction.`;
     ringLevel: 1 | 2 | 3;
     confidence: number;
   }): Promise<string> {
+    // Validate ring level against policy before writing to DB.
+    // Catches agents that manually assign wrong rings to pinned action types.
+    assertRingLevelValid(options.actionType, options.ringLevel);
+
     const expiresAt =
       options.ringLevel === 2 ? new Date(Date.now() + 4 * 60 * 60 * 1000) : null;
 
