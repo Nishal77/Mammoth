@@ -6,21 +6,19 @@ const MAMMOTH_DIR = path.join(os.homedir(), ".mammoth");
 const CONFIG_FILE = path.join(MAMMOTH_DIR, "config.json");
 
 export type MammothConfig = {
-  projectRoot: string;
+  projectRoot: string | null;
   apiUrl: string;
   authToken: string | null;
   authEmail: string | null;
   setupComplete: boolean;
-  envPath: string | null;
 };
 
 const DEFAULT_CONFIG: MammothConfig = {
-  projectRoot: process.cwd(),
+  projectRoot: null,
   apiUrl: "http://localhost:4000",
   authToken: null,
   authEmail: null,
   setupComplete: false,
-  envPath: null,
 };
 
 function ensureDir(): void {

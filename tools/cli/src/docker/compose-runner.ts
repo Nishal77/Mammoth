@@ -1,13 +1,21 @@
 import { execa } from "execa";
+import fs from "node:fs";
 import path from "node:path";
-import { readConfig } from "../lib/config.js";
+import { getMammothDir } from "../lib/config.js";
+import { DOCKER_COMPOSE_TEMPLATE } from "../assets/docker-compose-template.js";
 import { logger } from "../lib/logger.js";
 
-type ComposeService = "postgres" | "redis" | "qdrant" | "minio" | "all";
+const COMPOSE_FILENAME = "docker-compose.yml";
 
-function getComposePath(): string {
-  const config = readConfig();
-  return path.join(config.projectRoot, "infrastructure", "docker", "docker-compose.dev.yml");
+export function getComposePath(): string {
+  return path.join(getMammothDir(), COMPOSE_FILENAME);
+}
+
+export function ensureComposeFile(): void {
+  const composePath = getComposePath();
+  if (!fs.existsSync(composePath)) {
+    fs.writeFileSync(composePath, DOCKER_COMPOSE_TEMPLATE, { mode: 0o644 });
+  }
 }
 
 async function detectDockerCompose(): Promise<string[]> {
@@ -15,17 +23,19 @@ async function detectDockerCompose(): Promise<string[]> {
     await execa("docker", ["compose", "version"], { stdio: "pipe" });
     return ["docker", "compose"];
   } catch {
-    // docker compose v1 fallback
     try {
       await execa("docker-compose", ["version"], { stdio: "pipe" });
       return ["docker-compose"];
     } catch {
-      throw new Error("Docker Compose not found. Install Docker Desktop or docker-compose.");
+      throw new Error(
+        "Docker Compose not found. Install Docker Desktop: https://docs.docker.com/get-docker/"
+      );
     }
   }
 }
 
 async function runCompose(args: string[], inherit = false): Promise<void> {
+  ensureComposeFile();
   const composeBin = await detectDockerCompose();
   const composePath = getComposePath();
   const fullArgs = [...composeBin.slice(1), "-f", composePath, ...args];
@@ -45,15 +55,11 @@ export async function checkDockerRunning(): Promise<boolean> {
 }
 
 export async function startServices(): Promise<void> {
-  await runCompose(["up", "-d", "--remove-orphans"], false);
+  await runCompose(["up", "-d", "--remove-orphans"]);
 }
 
 export async function stopServices(): Promise<void> {
-  await runCompose(["down"], false);
-}
-
-export async function restartServices(): Promise<void> {
-  await runCompose(["restart"], false);
+  await runCompose(["down"]);
 }
 
 export async function pullImages(): Promise<void> {
@@ -67,6 +73,7 @@ export type ServiceStatus = {
 };
 
 export async function getServiceStatuses(): Promise<ServiceStatus[]> {
+  ensureComposeFile();
   const composeBin = await detectDockerCompose();
   const composePath = getComposePath();
   const fullArgs = [...composeBin.slice(1), "-f", composePath, "ps", "--format", "json"];
@@ -97,10 +104,11 @@ export async function getServiceStatuses(): Promise<ServiceStatus[]> {
   }
 }
 
-export async function tailLogs(service: ComposeService, follow: boolean): Promise<void> {
-  const args = service === "all"
-    ? ["logs", follow ? "-f" : "--no-follow", "--tail=50"]
-    : ["logs", follow ? "-f" : "--no-follow", "--tail=50", `mammoth_${service}`];
+export async function tailLogs(service: string, follow: boolean): Promise<void> {
+  const args =
+    service === "all"
+      ? ["logs", follow ? "-f" : "--no-follow", "--tail=50"]
+      : ["logs", follow ? "-f" : "--no-follow", "--tail=50", `mammoth_${service}`];
 
   await runCompose(args, true);
 }

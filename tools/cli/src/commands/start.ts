@@ -5,7 +5,6 @@ import {
   startServices,
   getServiceStatuses,
 } from "../docker/compose-runner.js";
-import { readConfig } from "../lib/config.js";
 
 async function waitForHealthy(maxWait = 60_000): Promise<void> {
   const deadline = Date.now() + maxWait;
@@ -17,20 +16,12 @@ async function waitForHealthy(maxWait = 60_000): Promise<void> {
       const svc = statuses.find((s) => s.name.includes(name));
       return svc?.health === "healthy" || svc?.status === "running";
     });
-
     if (allHealthy) return;
     await new Promise((r) => setTimeout(r, 2000));
   }
 }
 
 export async function runStart(): Promise<void> {
-  const config = readConfig();
-
-  if (!config.setupComplete) {
-    logger.warn("Setup not complete. Run: mammoth init");
-    process.exit(1);
-  }
-
   const dockerOk = await checkDockerRunning();
   if (!dockerOk) {
     logger.error("Docker is not running. Start Docker Desktop first.");
@@ -40,7 +31,7 @@ export async function runStart(): Promise<void> {
   const startSpinner = ora("Starting infrastructure services").start();
   try {
     await startServices();
-    startSpinner.text = "Waiting for health checks";
+    startSpinner.text = "Waiting for services to be healthy";
     await waitForHealthy();
     startSpinner.succeed("All services running");
   } catch (err) {
@@ -57,8 +48,4 @@ export async function runStart(): Promise<void> {
     const health = svc.health !== "none" ? ` [${svc.health}]` : "";
     console.log(`  ${icon}  ${svc.name.padEnd(15)} ${svc.status}${health}`);
   }
-
-  logger.blank();
-  logger.dim("Start the API:     pnpm --filter @mammoth/api dev");
-  logger.dim("Start the web app: pnpm --filter @mammoth/web dev");
 }

@@ -2,127 +2,156 @@ import inquirer from "inquirer";
 import fs from "node:fs";
 import path from "node:path";
 import ora from "ora";
-import { writeConfig, readConfig } from "../lib/config.js";
+import chalk from "chalk";
+import { writeConfig, getMammothDir } from "../lib/config.js";
 import { logger } from "../lib/logger.js";
-import { checkDockerRunning, pullImages, startServices } from "../docker/compose-runner.js";
+import {
+  checkDockerRunning,
+  pullImages,
+  startServices,
+  getServiceStatuses,
+  ensureComposeFile,
+} from "../docker/compose-runner.js";
 import { apiClient } from "../api/client.js";
 import { saveToken } from "../auth/token-store.js";
 
-const REQUIRED_ENV_KEYS = [
-  "ANTHROPIC_API_KEY",
-  "OPENAI_API_KEY",
+const ENV_FILE = path.join(getMammothDir(), ".env");
+
+const REQUIRED_KEYS = [
+  {
+    key: "ANTHROPIC_API_KEY",
+    label: "Anthropic API key",
+    hint: "Get it at console.anthropic.com",
+    prefix: "sk-ant-",
+  },
+  {
+    key: "OPENAI_API_KEY",
+    label: "OpenAI API key",
+    hint: "Used for embeddings — get it at platform.openai.com",
+    prefix: "sk-",
+  },
 ];
 
-const OPTIONAL_ENV_KEYS = [
-  "EXA_API_KEY",
-  "APOLLO_API_KEY",
-  "RESEND_API_KEY",
-  "STRIPE_SECRET_KEY",
-  "VAPI_API_KEY",
-  "GITHUB_WEBHOOK_SECRET",
+const OPTIONAL_KEYS = [
+  { key: "EXA_API_KEY", label: "Exa API key", hint: "Web search for agents — exa.ai" },
+  { key: "APOLLO_API_KEY", label: "Apollo API key", hint: "B2B lead database — apollo.io" },
+  { key: "RESEND_API_KEY", label: "Resend API key", hint: "Email sending — resend.com" },
 ];
 
-function buildEnvFile(values: Record<string, string>, projectRoot: string): string {
-  const examplePath = path.join(projectRoot, ".env.example");
-  if (!fs.existsSync(examplePath)) {
-    throw new Error(`.env.example not found at ${projectRoot}`);
-  }
-
-  let content = fs.readFileSync(examplePath, "utf-8");
-
-  for (const [key, val] of Object.entries(values)) {
-    if (!val) continue;
-    // Replace the key=... line with the real value
-    content = content.replace(
-      new RegExp(`^(${key}=).*$`, "m"),
-      `$1${val}`
-    );
-  }
-
-  return content;
+function writeEnvFile(values: Record<string, string>): void {
+  const lines = Object.entries(values)
+    .filter(([, v]) => v.length > 0)
+    .map(([k, v]) => `${k}=${v}`);
+  fs.writeFileSync(ENV_FILE, lines.join("\n") + "\n", { mode: 0o600 });
 }
 
-async function waitForApi(maxAttempts = 20): Promise<boolean> {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+async function waitForApi(apiUrl: string, maxAttempts = 20): Promise<boolean> {
+  for (let i = 0; i < maxAttempts; i++) {
     try {
-      await apiClient.health();
-      return true;
+      const response = await fetch(`${apiUrl}/health`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (response.ok) return true;
     } catch {
-      await new Promise((r) => setTimeout(r, 3000));
+      // not ready yet
     }
+    await new Promise((r) => setTimeout(r, 3000));
   }
   return false;
 }
 
-export async function runInit(): Promise<void> {
-  logger.header("MAMMOTH Setup Wizard");
-  logger.dim("Sets up infrastructure and creates your admin account.");
-  logger.blank();
+function printBanner(): void {
+  console.clear();
+  console.log(chalk.bold.white("\n  MAMMOTH Setup\n"));
+  console.log(chalk.dim("  Sets up your AI company OS in 3 steps:"));
+  console.log(chalk.dim("  1. Enter API keys"));
+  console.log(chalk.dim("  2. Start infrastructure (Docker)"));
+  console.log(chalk.dim("  3. Create your account\n"));
+}
 
+export async function runInit(): Promise<void> {
+  printBanner();
+
+  // Step 0: Docker check
   const dockerRunning = await checkDockerRunning();
   if (!dockerRunning) {
-    logger.error("Docker is not running. Start Docker Desktop then retry.");
+    logger.error("Docker is not running.");
+    console.log(
+      chalk.dim(
+        "\n  Install Docker Desktop from https://docs.docker.com/get-docker/\n  then run: mammoth init\n"
+      )
+    );
     process.exit(1);
   }
 
-  const config = readConfig();
-  const projectRoot = config.projectRoot;
-
-  const examplePath = path.join(projectRoot, ".env.example");
-  if (!fs.existsSync(examplePath)) {
-    logger.error(`Not in MAMMOTH project root. Run this command from the cloned mammoth/ directory.`);
-    process.exit(1);
-  }
-
-  const envPath = path.join(projectRoot, ".env.local");
-  if (fs.existsSync(envPath)) {
-    const { overwrite } = await inquirer.prompt<{ overwrite: boolean }>([
+  // Already set up?
+  if (fs.existsSync(ENV_FILE)) {
+    const { redo } = await inquirer.prompt<{ redo: boolean }>([
       {
         type: "confirm",
-        name: "overwrite",
-        message: ".env.local already exists. Overwrite?",
+        name: "redo",
+        message: "MAMMOTH is already configured. Re-run setup?",
         default: false,
       },
     ]);
-    if (!overwrite) {
-      logger.info("Skipping env setup. Using existing .env.local");
-      return skipToStart(projectRoot, envPath);
+    if (!redo) {
+      const startSpinner = ora("Starting services").start();
+      await startServices();
+      startSpinner.succeed("Services running — MAMMOTH is ready");
+      return;
     }
   }
 
-  // Collect API keys
-  const requiredAnswers = await inquirer.prompt<Record<string, string>>(
-    REQUIRED_ENV_KEYS.map((key) => ({
-      type: "password",
-      name: key,
-      message: `${key}:`,
-      validate: (v: string) => v.length > 0 || `${key} is required`,
-    }))
-  );
+  // Step 1: API keys
+  console.log(chalk.bold.white("\n  Step 1 of 3 — API Keys\n"));
 
-  const { collectOptional } = await inquirer.prompt<{ collectOptional: boolean }>([
+  const envValues: Record<string, string> = {};
+
+  for (const { key, label, hint, prefix } of REQUIRED_KEYS) {
+    console.log(chalk.dim(`  Hint: ${hint}`));
+    const { value } = await inquirer.prompt<{ value: string }>([
+      {
+        type: "password",
+        name: "value",
+        message: `  ${label}:`,
+        validate: (v: string) => {
+          if (v.length === 0) return `${label} is required`;
+          if (prefix && !v.startsWith(prefix)) return `Should start with ${prefix}`;
+          return true;
+        },
+      },
+    ]);
+    envValues[key] = value;
+    console.log();
+  }
+
+  const { addOptional } = await inquirer.prompt<{ addOptional: boolean }>([
     {
       type: "confirm",
-      name: "collectOptional",
-      message: "Add optional keys now (Exa, Apollo, Resend, Stripe, Vapi)?",
+      name: "addOptional",
+      message: "  Add optional keys now? (Exa web search, Apollo leads, Resend email)",
       default: false,
     },
   ]);
 
-  const optionalAnswers: Record<string, string> = {};
-  if (collectOptional) {
-    const answers = await inquirer.prompt<Record<string, string>>(
-      OPTIONAL_ENV_KEYS.map((key) => ({
-        type: "password",
-        name: key,
-        message: `${key} (leave blank to skip):`,
-        default: "",
-      }))
-    );
-    Object.assign(optionalAnswers, answers);
+  if (addOptional) {
+    for (const { key, label, hint } of OPTIONAL_KEYS) {
+      console.log(chalk.dim(`  Hint: ${hint}`));
+      const { value } = await inquirer.prompt<{ value: string }>([
+        {
+          type: "password",
+          name: "value",
+          message: `  ${label} (Enter to skip):`,
+          default: "",
+        },
+      ]);
+      if (value) envValues[key] = value;
+      console.log();
+    }
   }
 
   // Admin account
+  console.log(chalk.bold.white("\n  Your account\n"));
   const { adminEmail, adminPassword } = await inquirer.prompt<{
     adminEmail: string;
     adminPassword: string;
@@ -130,89 +159,80 @@ export async function runInit(): Promise<void> {
     {
       type: "input",
       name: "adminEmail",
-      message: "Admin email:",
+      message: "  Email address:",
       validate: (v: string) => v.includes("@") || "Enter a valid email",
     },
     {
       type: "password",
       name: "adminPassword",
-      message: "Admin password (min 8 chars):",
+      message: "  Password (min 8 characters):",
       validate: (v: string) => v.length >= 8 || "Minimum 8 characters",
     },
   ]);
 
-  // Write .env.local
-  const spinner = ora("Writing .env.local").start();
-  const envValues = { ...requiredAnswers, ...optionalAnswers };
-  const envContent = buildEnvFile(envValues, projectRoot);
-  fs.writeFileSync(envPath, envContent, { mode: 0o600 });
-  spinner.succeed(".env.local written");
+  // Step 2: Infrastructure
+  console.log(chalk.bold.white("\n  Step 2 of 3 — Starting Infrastructure\n"));
 
-  writeConfig({ projectRoot, envPath, setupComplete: false });
+  ensureComposeFile();
+  writeConfig({ apiUrl: "http://localhost:4000", setupComplete: false });
+  writeEnvFile(envValues);
 
-  // Pull Docker images
-  const pullSpinner = ora("Pulling Docker images (this may take a few minutes on first run)").start();
+  const pullSpinner = ora("  Pulling Docker images (first run may take 2-3 minutes)").start();
   try {
     await pullImages();
-    pullSpinner.succeed("Images ready");
+    pullSpinner.succeed("  Images ready");
   } catch {
-    pullSpinner.warn("Image pull had warnings — continuing");
+    pullSpinner.warn("  Image pull had warnings — continuing");
   }
 
-  // Start services
-  const startSpinner = ora("Starting Postgres, Redis, Qdrant, MinIO").start();
-  await startServices();
-  startSpinner.succeed("Services started");
-
-  // Run migrations
-  const migrateSpinner = ora("Running database migrations").start();
+  const startSpinner = ora("  Starting Postgres, Redis, Qdrant, MinIO").start();
   try {
-    const { execa } = await import("execa");
-    await execa("pnpm", ["db:migrate"], {
-      cwd: projectRoot,
-      stdio: "pipe",
-      env: { ...process.env, NODE_ENV: "development" },
-    });
-    migrateSpinner.succeed("Migrations complete");
-  } catch {
-    migrateSpinner.fail("Migrations failed — check .env.local DATABASE_URL");
+    await startServices();
+    startSpinner.succeed("  Infrastructure running");
+  } catch (err) {
+    startSpinner.fail("  Failed to start services");
+    logger.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
 
-  // Wait for API
-  const apiSpinner = ora("Waiting for API to start").start();
-  const apiReady = await waitForApi();
-  if (!apiReady) {
-    apiSpinner.warn("API not responding yet. Start manually: pnpm --filter @mammoth/api dev");
-  } else {
-    apiSpinner.succeed("API ready");
+  // Show what's running
+  const statuses = await getServiceStatuses();
+  for (const svc of statuses) {
+    const icon = svc.status === "running" ? chalk.green("+") : chalk.red("-");
+    console.log(`    ${icon} ${svc.name}`);
+  }
 
-    // Create admin account
-    const authSpinner = ora("Creating admin account").start();
+  // Step 3: Account
+  console.log(chalk.bold.white("\n  Step 3 of 3 — Creating Account\n"));
+
+  const apiSpinner = ora("  Waiting for API server").start();
+  const apiReady = await waitForApi("http://localhost:4000");
+  if (!apiReady) {
+    apiSpinner.warn("  API not responding — start it manually: pnpm --filter @mammoth/api dev");
+    apiSpinner.warn("  Then run: mammoth auth login");
+  } else {
+    apiSpinner.succeed("  API ready");
+
+    const authSpinner = ora("  Creating account").start();
     try {
       const authResult = await apiClient.signIn(adminEmail, adminPassword);
       saveToken(authResult.token, adminEmail);
-      authSpinner.succeed(`Logged in as ${adminEmail}`);
+      authSpinner.succeed(`  Signed in as ${adminEmail}`);
     } catch {
-      authSpinner.warn("Could not create session — run: mammoth auth login");
+      authSpinner.warn("  Account creation failed — run: mammoth auth login");
     }
   }
 
   writeConfig({ setupComplete: true });
 
-  logger.blank();
-  logger.success("MAMMOTH is ready.");
-  logger.blank();
-  logger.dim("Next steps:");
-  logger.dim("  mammoth status          — check services");
-  logger.dim("  mammoth company create  — onboard a company");
-  logger.dim("  mammoth approve list    — view pending approvals");
-}
-
-async function skipToStart(projectRoot: string, envPath: string): Promise<void> {
-  writeConfig({ projectRoot, envPath });
-
-  const spinner = ora("Starting services").start();
-  await startServices();
-  spinner.succeed("Services started");
+  // Done
+  console.log();
+  console.log(
+    chalk.bold.white("  MAMMOTH is ready.\n")
+  );
+  console.log(chalk.dim("  mammoth status             check everything is running"));
+  console.log(chalk.dim("  mammoth approve list       review pending AI actions"));
+  console.log(chalk.dim("  mammoth trigger marketing  fire the marketing agent"));
+  console.log(chalk.dim("  mammoth doctor             run health checks"));
+  console.log();
 }
