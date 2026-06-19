@@ -21,7 +21,7 @@ const log = createLogger("agent-worker");
 
 import type { Job } from "bullmq";
 import { createAgentWorker, QUEUE_NAMES, BaseAgent } from "@mammoth/agent-base";
-import type { AgentJobData, AgentTaskOutput, AgentRunContext, AgentTaskInput } from "@mammoth/agent-base";
+import type { AgentJobData } from "@mammoth/agent-base";
 import { PolicyViolationError } from "@mammoth/eval-policy";
 import { CeoBrainAgent } from "@mammoth/agent-executive";
 import { MarketingAgent } from "@mammoth/agent-marketing";
@@ -40,6 +40,11 @@ import {
   registerExpiryCheckJob,
 } from "./approval-expiry-worker.ts";
 import { executionWorker } from "./action-execution-worker.ts";
+import {
+  learningWorker,
+  registerDailyLearningJob,
+  enqueuePendingLearningCycles,
+} from "./learning-worker.ts";
 
 // Shared Redis connection used for DLQ publishing.
 const redis = new Redis({
@@ -177,10 +182,16 @@ worker.on("error", (error) => {
 });
 
 await registerExpiryCheckJob();
+await registerDailyLearningJob();
+
+// On startup, immediately catch any departments that accumulated signals
+// while the worker was down (e.g. after a deploy).
+void enqueuePendingLearningCycles().catch(() => {});
 
 log.info(`Agent worker started`, { queue: QUEUE_NAMES.AGENT_TASKS });
 log.info("Approval expiry worker running — checks every 5 minutes");
 log.info("Action execution worker running — dispatches approved actions");
+log.info("Learning worker running — synthesizes department playbooks daily");
 
 const shutdown = async (signal: string): Promise<void> => {
   log.info(`Received ${signal}, shutting down gracefully`);
@@ -188,6 +199,7 @@ const shutdown = async (signal: string): Promise<void> => {
     worker.close(),
     expiryWorker.close(),
     executionWorker.close(),
+    learningWorker.close(),
     redis.quit(),
     flushSentry(),
     shutdownTracing(),

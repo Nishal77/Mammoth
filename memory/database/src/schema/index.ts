@@ -12,3 +12,4 @@ export * from "./metrics.ts";
 export * from "./audit.ts";
 export * from "./relations.ts";
 export * from "./policy.ts";
+export * from "./feedback.ts";

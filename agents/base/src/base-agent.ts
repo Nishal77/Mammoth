@@ -135,8 +135,13 @@ export abstract class BaseAgent {
       }
 
       // ── 5. Evaluation gate — only for publishable content ────────────────────
+      let evalScore: number | undefined;
+      let evalPassed: boolean | undefined;
+
       if (output.contentType && output.content.length > 50) {
         output = await this.runEvaluationGate(output);
+        evalScore = typeof output.summary["evalScore"] === "number" ? output.summary["evalScore"] : undefined;
+        evalPassed = output.summary["evalVerdict"] !== "blocked";
       }
 
       await this.saveTaskOutput(output);
@@ -148,6 +153,8 @@ export abstract class BaseAgent {
         department: this.departmentName,
         taskType: taskInput.taskType,
         output,
+        ...(evalScore !== undefined ? { evalScore } : {}),
+        ...(evalPassed !== undefined ? { evalPassed } : {}),
       });
 
       if (!output.approvalRequired) {

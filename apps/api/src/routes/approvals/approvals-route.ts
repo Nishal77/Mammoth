@@ -7,17 +7,20 @@ import { authenticate } from "../../middleware/authenticate.ts";
 import { requireCompanyAccess } from "../../middleware/require-company-access.ts";
 import { NotFoundError, ValidationError, ForbiddenError } from "@mammoth/shared/errors";
 import { successResponse } from "@mammoth/shared/types";
+import { writeLearningSignal, MIN_SIGNALS_FOR_SYNTHESIS } from "@mammoth/agent-base";
 
 const EXECUTION_QUEUE_NAME = "approval:execute";
+const LEARNING_QUEUE_NAME = "agent:learning";
 
-const executionQueue = new Queue(EXECUTION_QUEUE_NAME, {
-  connection: {
-    host: process.env["REDIS_HOST"] ?? "localhost",
-    port: Number(process.env["REDIS_PORT"] ?? 6379),
-    password: process.env["REDIS_PASSWORD"] ?? undefined,
-    maxRetriesPerRequest: null,
-  },
-});
+const REDIS_CONNECTION = {
+  host: process.env["REDIS_HOST"] ?? "localhost",
+  port: Number(process.env["REDIS_PORT"] ?? 6379),
+  password: process.env["REDIS_PASSWORD"] ?? undefined,
+  maxRetriesPerRequest: null,
+} as const;
+
+const executionQueue = new Queue(EXECUTION_QUEUE_NAME, { connection: REDIS_CONNECTION });
+const learningQueue = new Queue(LEARNING_QUEUE_NAME, { connection: REDIS_CONNECTION });
 
 const ResolveSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("approve") }),
@@ -119,6 +122,7 @@ export async function approvalsRoute(app: FastifyInstance): Promise<void> {
           department: true,
           actionType: true,
           ringLevel: true,
+          outputContent: true,
         },
       });
 
@@ -200,6 +204,31 @@ export async function approvalsRoute(app: FastifyInstance): Promise<void> {
         actionType: approval.actionType,
       }).catch((error: unknown) => {
         console.error("[approvals] Trust score promotion check failed:", error);
+      });
+
+      // Write a learning signal and trigger synthesis if threshold reached.
+      // Non-blocking — learning failure must never affect the approval response.
+      void writeLearningSignal({
+        companyId: request.company.id,
+        department: approval.department,
+        actionType: approval.actionType,
+        signalType:
+          input.action === "approve" ? "approved" :
+          input.action === "reject"  ? "vetoed"   : "modified",
+        originalContent: approval.outputContent,
+        ...(input.action === "modify" ? { correctedContent: input.modifiedContent } : {}),
+        ...(input.action === "modify" && input.diffSummary ? { correctionNote: input.diffSummary } : {}),
+      }).then(async (unprocessedCount) => {
+        if (unprocessedCount >= MIN_SIGNALS_FOR_SYNTHESIS) {
+          const jobId = `learn:${request.company.id}:${approval.department}`;
+          await learningQueue.add(
+            jobId,
+            { companyId: request.company.id, department: approval.department },
+            { jobId }
+          );
+        }
+      }).catch((error: unknown) => {
+        console.error("[approvals] Learning signal write failed:", error);
       });
 
       // Enqueue execution when approved or content was modified — actions with "approved"
