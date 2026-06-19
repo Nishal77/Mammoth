@@ -14,6 +14,7 @@ import { initiateVapiCall } from "@mammoth/tool-vapi";
 import { createLogger } from "@mammoth/observability/logger";
 import { evaluateActionPolicy, auditLog } from "@mammoth/eval-policy";
 import { fireOutboundWebhook, isValidWebhookUrl } from "@mammoth/tool-n8n";
+import { runWithDispatchContext } from "@mammoth/shared/security";
 
 const log = createLogger("action-executor");
 
@@ -109,7 +110,10 @@ export const executionWorker = new Worker<ExecutionJobData>(
         return;
       }
 
-      await dispatchAction(companyId, department, actionType, outputContent, job.data);
+      await runWithDispatchContext(
+        { approvalId, companyId, actionType },
+        () => dispatchAction(companyId, department, actionType, outputContent, job.data)
+      );
 
       execLog.info("Action dispatched successfully");
       auditLog({ event: "action.dispatched", companyId, resourceType: "approval", resourceId: approvalId, actionType });

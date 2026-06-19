@@ -20,8 +20,9 @@ initTracing({
 const log = createLogger("agent-worker");
 
 import type { Job } from "bullmq";
-import { createAgentWorker, QUEUE_NAMES } from "@mammoth/agent-base";
+import { createAgentWorker, QUEUE_NAMES, BaseAgent } from "@mammoth/agent-base";
 import type { AgentJobData, AgentTaskOutput, AgentRunContext, AgentTaskInput } from "@mammoth/agent-base";
+import { PolicyViolationError } from "@mammoth/eval-policy";
 import { CeoBrainAgent } from "@mammoth/agent-executive";
 import { MarketingAgent } from "@mammoth/agent-marketing";
 import { SalesAgent } from "@mammoth/agent-sales";
@@ -48,11 +49,7 @@ const redis = new Redis({
   maxRetriesPerRequest: null,
 });
 
-type AgentInstance = {
-  run: (ctx: AgentRunContext, input: AgentTaskInput) => Promise<AgentTaskOutput>;
-};
-
-const DEPARTMENT_AGENT_MAP: Record<string, () => AgentInstance> = {
+const DEPARTMENT_AGENT_MAP: Record<string, () => BaseAgent> = {
   ceo: () => new CeoBrainAgent(),
   marketing: () => new MarketingAgent(),
   sales: () => new SalesAgent(),
@@ -107,6 +104,14 @@ async function processJob(job: Job<AgentJobData>): Promise<void> {
   }
 
   const agent = agentFactory();
+
+  // Dead-letter any job whose agent bypasses the policy gate by not extending BaseAgent.
+  if (!(agent instanceof BaseAgent)) {
+    throw new PolicyViolationError(
+      `Agent for department "${deptName}" does not extend BaseAgent — policy gate missing`,
+      "AGENT_NOT_BASE_AGENT"
+    );
+  }
 
   const output = await agent.run(
     { companyId, departmentId, taskId, agentRunId },

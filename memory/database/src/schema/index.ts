@@ -11,3 +11,4 @@ export * from "./content.ts";
 export * from "./metrics.ts";
 export * from "./audit.ts";
 export * from "./relations.ts";
+export * from "./policy.ts";

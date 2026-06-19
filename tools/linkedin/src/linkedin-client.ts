@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { requireDispatchContext } from "@mammoth/shared/security";
 
 const LINKEDIN_API_BASE = "https://api.linkedin.com/v2";
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -32,6 +33,7 @@ export async function postToLinkedIn(
   accessToken: string,
   options: LinkedInPostOptions
 ): Promise<LinkedInPostResult> {
+  requireDispatchContext();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 

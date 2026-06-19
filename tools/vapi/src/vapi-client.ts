@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { requireDispatchContext } from "@mammoth/shared/security";
 
 const VAPI_BASE_URL = "https://api.vapi.ai";
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -56,6 +57,7 @@ export async function initiateVapiCall(
   apiKey: string,
   options: VapiCallOptions
 ): Promise<VapiCallResult> {
+  requireDispatchContext();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 

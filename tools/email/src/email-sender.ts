@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { requireDispatchContext } from "@mammoth/shared/security";
 
 // Single Resend instance — created lazily so the module doesn't crash
 // when imported in test environments without RESEND_API_KEY
@@ -34,6 +35,7 @@ export type EmailResult =
  * @param options - Recipient, subject, and HTML/text body
  */
 export async function sendEmail(options: EmailOptions): Promise<EmailResult> {
+  requireDispatchContext();
   try {
     const { data, error } = await getResend().emails.send({
       from: FROM_ADDRESS,

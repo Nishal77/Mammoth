@@ -14,6 +14,7 @@ import {
 } from "@mammoth/eval-policy";
 import { AgentCostLimitError } from "@mammoth/shared/errors";
 import { PolicyViolationError } from "@mammoth/eval-policy";
+import { loadPolicyRuleOverrides } from "./policy-rules-cache.js";
 import type { ModelId, ModelCallResult } from "./model-router.ts";
 import type { CompanyContext } from "@mammoth/memory-retrieval";
 import type { ContentType } from "@mammoth/eval-output-quality";
@@ -111,9 +112,11 @@ export abstract class BaseAgent {
       // enforceOutputPolicy() corrects ring levels silently and throws only for
       // PERMANENTLY_BLOCKED actions. All corrections are audit-logged below.
       // This runs BEFORE the eval gate so escalations stack correctly.
+      const ruleOverrides = await loadPolicyRuleOverrides();
       const { _policyCorrections, ...enforcedOutput } = enforceOutputPolicy(
         output as PolicyCheckableOutput,
-        this.departmentName.toLowerCase()
+        this.departmentName.toLowerCase(),
+        ruleOverrides
       );
 
       output = { ...output, ...enforcedOutput };

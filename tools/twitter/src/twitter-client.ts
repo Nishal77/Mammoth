@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { requireDispatchContext } from "@mammoth/shared/security";
 
 const TWITTER_API_BASE = "https://api.twitter.com/2";
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -31,6 +32,7 @@ export async function postTweet(
   bearerToken: string,
   options: TweetOptions
 ): Promise<TweetResult> {
+  requireDispatchContext();
   if (options.text.length > 280) {
     return { posted: false, reason: "Tweet exceeds 280 character limit" };
   }

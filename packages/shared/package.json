@@ -9,7 +9,8 @@
     "./types": "./src/types/index.ts",
     "./events": "./src/events/index.ts",
     "./utils": "./src/utils/index.ts",
-    "./secrets": "./src/secrets/index.ts"
+    "./secrets": "./src/secrets/index.ts",
+    "./security": "./src/security/index.ts"
   },
   "dependencies": {
     "zod": "^3.24.1"

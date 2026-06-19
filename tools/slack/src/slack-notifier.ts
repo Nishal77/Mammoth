@@ -1,4 +1,5 @@
 import { WebClient } from "@slack/web-api";
+import { requireDispatchContext } from "@mammoth/shared/security";
 
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -39,6 +40,7 @@ export async function sendApprovalToSlack(
   channel: string,
   message: SlackApprovalMessage
 ): Promise<SlackSendResult> {
+  requireDispatchContext();
   const client = new WebClient(botToken, { timeout: REQUEST_TIMEOUT_MS });
 
   const vetoCutoff = message.expiresAt

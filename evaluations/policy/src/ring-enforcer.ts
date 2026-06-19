@@ -6,6 +6,16 @@ import {
 import { PolicyViolationError } from "./policy-violation-error.js";
 
 /**
+ * DB-sourced runtime additions to ALWAYS_RING_3 and PERMANENTLY_BLOCKED.
+ * Loaded by BaseAgent from policy-rules-cache every 5 minutes.
+ * Cannot remove hardcoded defaults — only extends them.
+ */
+export type PolicyRuleOverrides = {
+  alwaysRing3Extra: ReadonlySet<string>;
+  permanentlyBlockedExtra: ReadonlySet<string>;
+};
+
+/**
  * Minimal shape the enforcer needs from any agent output.
  * Defined here to avoid a circular dep with @mammoth/agent-base.
  */
@@ -46,7 +56,8 @@ export type PolicyEnforcedOutput = PolicyCheckableOutput & {
  */
 export function enforceOutputPolicy(
   output: PolicyCheckableOutput,
-  department: string
+  department: string,
+  ruleOverrides?: PolicyRuleOverrides
 ): PolicyEnforcedOutput {
   const corrections: PolicyCorrection[] = [];
   let { ringLevel, approvalRequired } = output;
@@ -54,7 +65,11 @@ export function enforceOutputPolicy(
   // ── Rule 1: Permanently blocked — hard throw ──────────────────────────────
   // These actions cannot be dispatched by any department under any ring.
   // The worker must dead-letter this job — never retry.
-  if (PERMANENTLY_BLOCKED.has(output.actionType)) {
+  const isPermBlocked =
+    PERMANENTLY_BLOCKED.has(output.actionType) ||
+    (ruleOverrides?.permanentlyBlockedExtra.has(output.actionType) ?? false);
+
+  if (isPermBlocked) {
     throw new PolicyViolationError(
       `Action "${output.actionType}" is permanently blocked. No ring or approval can authorize it.`,
       "PERMANENTLY_BLOCKED"
@@ -90,12 +105,17 @@ export function enforceOutputPolicy(
 
   // ── Rule 3: ALWAYS_RING_3 actions — pinned regardless of trust score ──────
   // The Progressive Trust Engine cannot promote these to Ring 2 or Ring 1.
-  if (ALWAYS_RING_3.has(output.actionType) && ringLevel < 3) {
+  const isAlwaysRing3 =
+    ALWAYS_RING_3.has(output.actionType) ||
+    (ruleOverrides?.alwaysRing3Extra.has(output.actionType) ?? false);
+
+  if (isAlwaysRing3 && ringLevel < 3) {
+    const overrideSource = ruleOverrides?.alwaysRing3Extra.has(output.actionType) ? " (runtime override)" : "";
     corrections.push({
       field: "ringLevel",
       from: ringLevel,
       to: 3,
-      rule: `"${output.actionType}" is pinned to Ring 3 by policy. Trust score cannot override.`,
+      rule: `"${output.actionType}" is pinned to Ring 3 by policy${overrideSource}. Trust score cannot override.`,
     });
     ringLevel = 3;
     approvalRequired = true;
