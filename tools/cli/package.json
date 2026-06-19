@@ -1,0 +1,36 @@
+{
+  "name": "@mammoth/cli",
+  "version": "0.1.0",
+  "description": "MAMMOTH CLI — manage your AI company OS from the terminal",
+  "bin": {
+    "mammoth": "./dist/index.js"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "inquirer": "^10.2.2",
+    "chalk": "^5.3.0",
+    "ora": "^8.1.1",
+    "execa": "^9.5.2"
+  },
+  "devDependencies": {
+    "@mammoth/typescript-config": "workspace:*",
+    "@types/node": "^22.10.2",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.1.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
