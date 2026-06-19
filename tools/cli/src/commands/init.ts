@@ -76,11 +76,8 @@ export async function runInit(): Promise<void> {
   const dockerRunning = await checkDockerRunning();
   if (!dockerRunning) {
     logger.error("Docker is not running.");
-    console.log(
-      chalk.dim(
-        "\n  Install Docker Desktop from https://docs.docker.com/get-docker/\n  then run: mammoth init\n"
-      )
-    );
+    console.log(chalk.dim("\n  Get Docker Desktop: https://mammoth.run/docker"));
+    console.log(chalk.dim("  Then run: mammoth init\n"));
     process.exit(1);
   }
 

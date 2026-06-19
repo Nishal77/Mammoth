@@ -22,7 +22,7 @@ async function checkDocker(): Promise<CheckResult> {
     return {
       label: "Docker installed",
       ok: false,
-      detail: "not found — install from https://docs.docker.com/get-docker/",
+      detail: "not found — install from https://mammoth.run/docker",
     };
   }
 }

@@ -15,7 +15,7 @@ info() { echo -e "${CYAN}  -->  ${RESET}$1"; }
 # ── Banner ────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${WHITE}  MAMMOTH Installer${RESET}"
-echo -e "  ${CYAN}AI Company OS — https://github.com/yourname/mammoth${RESET}"
+echo -e "  ${CYAN}AI Company OS — https://mammoth.run${RESET}"
 echo ""
 
 # ── OS detection ──────────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ if ! command -v docker &>/dev/null; then
     echo "  https://docs.docker.com/desktop/install/linux-install/"
   fi
   echo ""
-  echo "  After installing Docker, re-run this installer or:"
+  echo "  After installing Docker, run:"
   echo "  npm i -g mammoth && mammoth init"
   echo ""
   exit 0
