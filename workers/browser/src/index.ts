@@ -37,7 +37,7 @@ export const browserTaskQueue = new Queue<BrowserTaskData>(BROWSER_QUEUE_NAME, {
 const browserWorker = new Worker<BrowserTaskData>(
   BROWSER_QUEUE_NAME,
   async (job: Job<BrowserTaskData>) => {
-    const { companyId, taskType, url, parameters } = job.data;
+    const { companyId, taskType, url } = job.data;
     const taskLog = log.withContext({ companyId, taskType, actionType: taskType });
 
     taskLog.info(`Processing browser task: ${taskType} on ${url}`);

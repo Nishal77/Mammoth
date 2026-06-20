@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { runWithDispatchContext } from "@mammoth/shared/security";
 
 // We test the message construction logic without actually calling the Slack API.
 // The WebClient is mocked so tests run offline and don't burn API quota.
@@ -23,6 +24,8 @@ import * as slackMock from "@slack/web-api";
 const mockPostMessage = (slackMock as Record<string, unknown>)["_mockPostMessage"] as ReturnType<typeof vi.fn>;
 const mockAuthTest = (slackMock as Record<string, unknown>)["_mockAuthTest"] as ReturnType<typeof vi.fn>;
 
+const testCtx = { approvalId: "test-appr", companyId: "test-co", actionType: "send_slack" };
+
 describe("sendApprovalToSlack", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -31,15 +34,17 @@ describe("sendApprovalToSlack", () => {
   it("returns sent=true with messageTs on success", async () => {
     mockPostMessage.mockResolvedValueOnce({ ok: true, ts: "1234567890.123456" });
 
-    const result = await sendApprovalToSlack("xoxb-token", "#approvals", {
-      approvalId: "approval-abc",
-      department: "Marketing",
-      actionType: "publish_blog_post",
-      ringLevel: 2,
-      outputContent: "Publishing: '10 growth hacks for B2B SaaS'",
-      confidence: 0.85,
-      expiresAt: new Date("2026-06-16T12:00:00Z"),
-    });
+    const result = await runWithDispatchContext(testCtx, () =>
+      sendApprovalToSlack("xoxb-token", "#approvals", {
+        approvalId: "approval-abc",
+        department: "Marketing",
+        actionType: "publish_blog_post",
+        ringLevel: 2,
+        outputContent: "Publishing: '10 growth hacks for B2B SaaS'",
+        confidence: 0.85,
+        expiresAt: new Date("2026-06-16T12:00:00Z"),
+      })
+    );
 
     expect(result.sent).toBe(true);
     if (result.sent) {
@@ -51,15 +56,17 @@ describe("sendApprovalToSlack", () => {
   it("returns sent=false when Slack API throws", async () => {
     mockPostMessage.mockRejectedValueOnce(new Error("channel_not_found"));
 
-    const result = await sendApprovalToSlack("xoxb-token", "#nonexistent", {
-      approvalId: "approval-xyz",
-      department: "Sales",
-      actionType: "send_outreach",
-      ringLevel: 2,
-      outputContent: "Hi there",
-      confidence: 0.9,
-      expiresAt: null,
-    });
+    const result = await runWithDispatchContext(testCtx, () =>
+      sendApprovalToSlack("xoxb-token", "#nonexistent", {
+        approvalId: "approval-xyz",
+        department: "Sales",
+        actionType: "send_outreach",
+        ringLevel: 2,
+        outputContent: "Hi there",
+        confidence: 0.9,
+        expiresAt: null,
+      })
+    );
 
     expect(result.sent).toBe(false);
     if (!result.sent) {
@@ -71,15 +78,17 @@ describe("sendApprovalToSlack", () => {
     mockPostMessage.mockResolvedValueOnce({ ok: true, ts: "ts" });
 
     const longContent = "x".repeat(1000);
-    await sendApprovalToSlack("xoxb-token", "#ch", {
-      approvalId: "id",
-      department: "Engineering",
-      actionType: "merge_pr",
-      ringLevel: 2,
-      outputContent: longContent,
-      confidence: 0.8,
-      expiresAt: null,
-    });
+    await runWithDispatchContext(testCtx, () =>
+      sendApprovalToSlack("xoxb-token", "#ch", {
+        approvalId: "id",
+        department: "Engineering",
+        actionType: "merge_pr",
+        ringLevel: 2,
+        outputContent: longContent,
+        confidence: 0.8,
+        expiresAt: null,
+      })
+    );
 
     const callArgs = mockPostMessage.mock.calls[0]?.[0] as Record<string, unknown>;
     const blocks = callArgs?.["blocks"] as Array<Record<string, unknown>>;
@@ -90,7 +99,6 @@ describe("sendApprovalToSlack", () => {
     );
 
     expect(contentBlock).toBeDefined();
-    // The content should end with "..." indicating truncation
     const textContent = (contentBlock?.["text"] as Record<string, unknown>)?.["text"] as string;
     expect(textContent).toContain("...");
     expect(textContent.length).toBeLessThan(600);
@@ -99,15 +107,17 @@ describe("sendApprovalToSlack", () => {
   it("shows 'No veto window' when expiresAt is null", async () => {
     mockPostMessage.mockResolvedValueOnce({ ok: true, ts: "ts" });
 
-    await sendApprovalToSlack("xoxb-token", "#ch", {
-      approvalId: "id",
-      department: "HR",
-      actionType: "post_job",
-      ringLevel: 2,
-      outputContent: "Posting job",
-      confidence: 0.7,
-      expiresAt: null,
-    });
+    await runWithDispatchContext(testCtx, () =>
+      sendApprovalToSlack("xoxb-token", "#ch", {
+        approvalId: "id",
+        department: "HR",
+        actionType: "post_job",
+        ringLevel: 2,
+        outputContent: "Posting job",
+        confidence: 0.7,
+        expiresAt: null,
+      })
+    );
 
     const callArgs = mockPostMessage.mock.calls[0]?.[0] as Record<string, unknown>;
     const messageJson = JSON.stringify(callArgs);

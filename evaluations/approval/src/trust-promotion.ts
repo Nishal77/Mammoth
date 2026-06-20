@@ -1,5 +1,4 @@
-import { db } from "./client.ts";
-import { trustScores } from "./schema/index.ts";
+import { db, trustScores } from "@mammoth/memory-database";
 import { eq, and } from "drizzle-orm";
 
 const PROMOTION_THRESHOLD = 10;

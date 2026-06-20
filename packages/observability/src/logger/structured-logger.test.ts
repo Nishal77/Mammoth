@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { createLogger, ServiceLogger } from "./structured-logger.ts";
 
 // We don't test pino internals — we test that our ServiceLogger wrapper
@@ -63,7 +63,7 @@ describe("ServiceLogger log methods", () => {
   it("errorWithStack handles Error with no stack", () => {
     const logger = createLogger("test");
     const err = new Error("no stack");
-    err.stack = undefined;
+    delete err.stack;
     expect(() => logger.errorWithStack("error", err)).not.toThrow();
   });
 });

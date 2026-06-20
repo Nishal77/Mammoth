@@ -19,7 +19,8 @@
     "zod": "^3.24.1",
     "@mammoth/memory-database": "workspace:*",
     "@mammoth/shared": "workspace:*",
-    "@mammoth/observability": "workspace:*"
+    "@mammoth/observability": "workspace:*",
+    "drizzle-orm": "^0.38.3"
   },
   "devDependencies": {
     "@mammoth/typescript-config": "workspace:*",

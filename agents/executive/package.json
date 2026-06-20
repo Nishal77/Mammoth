@@ -9,7 +9,7 @@
   "main": "./src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -17,7 +17,6 @@
     "@mammoth/agent-base": "workspace:*",
     "@mammoth/memory-database": "workspace:*",
     "@mammoth/memory-retrieval": "workspace:*",
-    "@mammoth/orchestrator-dispatcher": "workspace:*",
     "drizzle-orm": "^0.38.3",
     "@mammoth/shared": "workspace:*"
   },

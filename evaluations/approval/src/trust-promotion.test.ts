@@ -8,16 +8,13 @@ const { mockFindFirst, mockUpdate, mockSet, mockWhere } = vi.hoisted(() => {
   return { mockFindFirst, mockUpdate, mockSet, mockWhere };
 });
 
-vi.mock("./client.ts", () => ({
+vi.mock("@mammoth/memory-database", () => ({
   db: {
     query: {
       trustScores: { findFirst: mockFindFirst },
     },
     update: mockUpdate,
   },
-}));
-
-vi.mock("./schema/index.ts", () => ({
   trustScores: {
     companyId: "companyId",
     department: "department",
@@ -31,6 +28,7 @@ vi.mock("./schema/index.ts", () => ({
 vi.mock("drizzle-orm", () => ({
   eq: (col: string, val: unknown) => ({ col, val }),
   and: (...conditions: unknown[]) => conditions,
+  relations: () => ({}),
 }));
 
 import { checkAndPromoteTrustScore } from "./trust-promotion.ts";

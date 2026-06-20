@@ -13,7 +13,6 @@ const leadRespondedSignal = defineSignal<[string]>("leadResponded");
 const log = createLogger("crm-webhook");
 
 const TEMPORAL_ADDRESS = process.env["TEMPORAL_ADDRESS"] ?? "localhost:7233";
-const TEMPORAL_TASK_QUEUE = "mammoth-sales";
 
 /**
  * HubSpot contact.reply event schema.

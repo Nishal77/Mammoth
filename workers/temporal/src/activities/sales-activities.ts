@@ -9,6 +9,7 @@
  */
 
 import { db, departmentTasks, departments, leads, agentRuns } from "@mammoth/memory-database";
+import type { LeadStatus } from "@mammoth/memory-database";
 import { eq, and, desc } from "drizzle-orm";
 import { Queue } from "bullmq";
 import type { AgentJobData } from "./agent-job-data.ts";
@@ -145,14 +146,14 @@ export async function checkLeadResponded(leadId: string): Promise<boolean> {
     columns: { status: true },
   });
 
-  return lead?.status === "contacted" || lead?.status === "replied";
+  return lead?.status === "in_sequence" || lead?.status === "replied";
 }
 
 /**
  * Updates a lead's status in the DB.
  * Called at the end of the sales cycle to mark leads as processed.
  */
-export async function updateLeadStatus(leadId: string, status: string): Promise<void> {
+export async function updateLeadStatus(leadId: string, status: LeadStatus): Promise<void> {
   await db
     .update(leads)
     .set({ status, updatedAt: new Date() })

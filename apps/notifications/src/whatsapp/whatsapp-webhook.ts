@@ -1,7 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { db, approvals, users } from "@mammoth/memory-database";
 import { eq, and } from "drizzle-orm";
-import { NotFoundError, ForbiddenError } from "@mammoth/shared/errors";
 
 type WhatsAppWebhookBody = {
   object: string;

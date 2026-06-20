@@ -1,7 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock the memory writer before importing the module under test.
-// Without this, importing outcome-capturer.ts would trigger the DB connection.
+// Mock DB and external services — importing learning-loop.ts triggers
+// @mammoth/memory-database which throws without DATABASE_URL.
+vi.mock("@mammoth/memory-database", () => ({
+  db: { insert: vi.fn(), update: vi.fn(), select: vi.fn() },
+  agentLearningSignals: {},
+  companyMemory: {},
+  companies: {},
+}));
+vi.mock("./model-router.ts", () => ({
+  callModel: vi.fn().mockResolvedValue({ content: "ok", promptTokens: 0, completionTokens: 0, costUsd: 0, model: "claude-haiku-4-5-20251001" }),
+  MODELS: { HAIKU: "claude-haiku-4-5-20251001" },
+}));
 vi.mock("@mammoth/memory-retrieval", () => ({
   upsertMemory: vi.fn().mockResolvedValue(undefined),
 }));

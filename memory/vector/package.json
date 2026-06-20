@@ -9,19 +9,19 @@
   "main": "./src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@qdrant/js-client-rest": "^1.13.0",
     "@anthropic-ai/sdk": "^0.39.0",
     "openai": "^4.68.4",
     "zod": "^3.24.1",
-    "@mammoth/agent-base": "workspace:*",
     "@mammoth/memory-database": "workspace:*",
     "@mammoth/shared": "workspace:*"
   },
   "devDependencies": {
     "@mammoth/typescript-config": "workspace:*",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^3.1.1"
   }
 }

@@ -106,16 +106,6 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint agents (import-restriction rules)
-        working-directory: agents
         run: |
-          pnpm dlx eslint \
-            "content/src/**/*.ts" \
-            "engineering/src/**/*.ts" \
-            "executive/src/**/*.ts" \
-            "finance/src/**/*.ts" \
-            "hr/src/**/*.ts" \
-            "marketing/src/**/*.ts" \
-            "research/src/**/*.ts" \
-            "sales/src/**/*.ts" \
-            "support/src/**/*.ts" \
-            --max-warnings 0
+          find agents -path 'agents/base' -prune -o -name '*.ts' -not -path '*/node_modules/*' -print \
+            | xargs node_modules/.bin/eslint --config agents/eslint.config.mjs --no-warn-ignored --max-warnings 0

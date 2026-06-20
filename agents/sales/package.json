@@ -9,7 +9,7 @@
   "main": "./src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -22,12 +22,11 @@
     "@mammoth/tool-vapi": "workspace:*",
     "@mammoth/memory-database": "workspace:*",
     "@mammoth/shared": "workspace:*",
-    "@mammoth/tool-crm": "workspace:*",
-    "@mammoth/tool-apollo": "workspace:*",
-    "@mammoth/tool-vapi": "workspace:*"
+    "@mammoth/tool-apollo": "workspace:*"
   },
   "devDependencies": {
     "@mammoth/typescript-config": "workspace:*",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^3.1.1"
   }
 }

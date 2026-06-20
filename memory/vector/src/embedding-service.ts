@@ -1,6 +1,8 @@
 import OpenAI from "openai";
 import { createHash } from "crypto";
-import { MODELS } from "@mammoth/agent-base";
+
+// Pinned here so memory-vector doesn't depend on agent-base (which depends on memory-retrieval → memory-vector).
+const EMBEDDING_MODEL = "text-embedding-3-small";
 
 const openai = new OpenAI({ apiKey: process.env["OPENAI_API_KEY"] });
 
@@ -13,7 +15,7 @@ const openai = new OpenAI({ apiKey: process.env["OPENAI_API_KEY"] });
  */
 export async function embed(text: string): Promise<number[]> {
   const response = await openai.embeddings.create({
-    model: MODELS.EMBEDDING,
+    model: EMBEDDING_MODEL,
     input: text.slice(0, 8191),
   });
   return response.data[0]!.embedding;

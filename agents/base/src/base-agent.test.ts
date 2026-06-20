@@ -9,26 +9,19 @@ import { BaseAgent } from "./base-agent.ts";
 
 vi.mock("@mammoth/memory-database", () => ({
   db: {
-    update: vi.fn().mockReturnValue({
-      set: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue(undefined),
-      }),
-    }),
-    insert: vi.fn().mockReturnValue({
-      values: vi.fn().mockResolvedValue(undefined),
-    }),
-    query: {
-      metricsDaily: {
-        findFirst: vi.fn().mockResolvedValue(null),
-      },
-    },
+    update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
+    insert: vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) }),
+    query: { metricsDaily: { findFirst: vi.fn().mockResolvedValue(null) } },
   },
   departmentTasks: {},
   taskRuns: {},
   agentRuns: {},
+  approvals: {},
+  companies: {},
+  publishNotification: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../memory/memory-loader.ts", () => ({
+vi.mock("@mammoth/memory-retrieval", () => ({
   loadCompanyContext: vi.fn().mockResolvedValue({
     companyId: "comp-test",
     companyName: "Test Co",
@@ -39,10 +32,27 @@ vi.mock("../memory/memory-loader.ts", () => ({
     competitorMemory: [],
     recentDecisions: [],
   }),
-  formatContextForPrompt: vi.fn().mockReturnValue("MOCKED CONTEXT"),
+  formatContextForDepartment: vi.fn().mockReturnValue("MOCKED CONTEXT"),
 }));
 
-vi.mock("../router/model-router.ts", () => ({
+vi.mock("@mammoth/knowledge-ingestion", () => ({
+  retrieveKnowledge: vi.fn().mockResolvedValue([]),
+  formatKnowledgeContext: vi.fn().mockReturnValue(""),
+}));
+
+vi.mock("@mammoth/eval-output-quality", () => ({
+  evaluateOutput: vi.fn().mockResolvedValue({ score: 0.9, passed: true }),
+}));
+
+vi.mock("@mammoth/eval-policy", () => ({
+  PolicyViolationError: class PolicyViolationError extends Error {},
+  validateCompanyId: vi.fn(),
+  auditLog: vi.fn().mockResolvedValue(undefined),
+  assertRingLevelValid: vi.fn(),
+  enforceOutputPolicy: vi.fn().mockImplementation((output: Record<string, unknown>) => ({ ...output, _policyCorrections: [] })),
+}));
+
+vi.mock("./model-router.ts", () => ({
   callModel: vi.fn().mockResolvedValue({
     content: "Mocked LLM response",
     promptTokens: 100,
@@ -58,8 +68,16 @@ vi.mock("../router/model-router.ts", () => ({
   },
 }));
 
-vi.mock("../goal/outcome-capturer.ts", () => ({
+vi.mock("./outcome-capturer.ts", () => ({
   captureOutcome: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("./policy-rules-cache.ts", () => ({
+  loadPolicyRuleOverrides: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("./task-router.ts", () => ({
+  routeTask: vi.fn().mockResolvedValue({ model: "claude-haiku-4-5-20251001" }),
 }));
 
 // ─── Concrete test agent ──────────────────────────────────────────────────────

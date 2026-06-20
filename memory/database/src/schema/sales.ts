@@ -27,6 +27,7 @@ export const leads = pgTable(
     companyDomain: text("company_domain"),
     companySize: text("company_size"),
     industry: text("industry"),
+    externalId: text("external_id"),
     source: text("source").default("agent:sales").notNull(),
     icpScore: decimal("icp_score", { precision: 4, scale: 3 }),
     enrichmentData: jsonb("enrichment_data").$type<Record<string, unknown>>(),

@@ -4,12 +4,13 @@
 // The runtime check (requireDispatchContext) is the hard gate; this is the
 // early-warning signal that catches the bypass at lint time.
 
-/** @type {import("eslint").Linter.Config[]} */
-export default [
-  {
-    files: ["**/*.ts"],
-    ignores: ["base/**"],
-    rules: {
+import tseslint from "typescript-eslint";
+
+export default tseslint.config({
+  files: ["**/*.ts"],
+  ignores: ["base/**"],
+  extends: [tseslint.configs.base],
+  rules: {
       "no-restricted-imports": [
         "error",
         {
@@ -42,6 +43,5 @@ export default [
           ],
         },
       ],
-    },
   },
-];
+});

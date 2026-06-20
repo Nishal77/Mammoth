@@ -195,7 +195,7 @@ async function handleApprovalCallback(
   await ctx.answerCallbackQuery({
     text: `${newStatus.charAt(0).toUpperCase() + newStatus.slice(1)}.`,
   });
-  await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+  await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
   await ctx.reply(`Approval ${newStatus}.`);
 }
 

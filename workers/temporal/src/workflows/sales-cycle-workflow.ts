@@ -29,7 +29,6 @@ import {
   defineSignal,
   defineQuery,
   setHandler,
-  condition,
 } from "@temporalio/workflow";
 import type * as activities from "../activities/sales-activities.ts";
 
@@ -171,7 +170,7 @@ export async function SalesCycleWorkflow(input: SalesCycleInput): Promise<void> 
     if (responded) {
       await updateLeadStatus(leadId, "replied");
     } else {
-      await updateLeadStatus(leadId, "exhausted");
+      await updateLeadStatus(leadId, "disqualified");
     }
   }
 
