@@ -9,3 +9,4 @@ packages:
   - "evaluations/*"
   - "workers/*"
   - "knowledge/*"
+  - "qa"
