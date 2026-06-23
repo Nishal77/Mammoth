@@ -3,12 +3,13 @@
 </p>
 
 <p align="center">
-  <img src="public/assets/Mammoth.jpeg" width="120" alt="Mammoth-logo"/>
+  <img src="public/assets/Mammoth_logo.png" width="120" alt="Mammoth-logo"/>
 </p>
+
 <h1 align="center">Mammoth: An AI Company Operating System</h1>
 
 <p align="center">
-  <b>One Command to Empower Your Agent with Comprehensive Trading Capabilities</b>
+  <b>One revenue goal. Nine autonomous departments working continuously to hit it.</b>
 </p>
 
 <p align="center">
