@@ -16,7 +16,7 @@
   <a href="https://trendshift.io/repositories/25527" target="_blank"><img src="https://trendshift.io/api/badge/repositories/25527" alt="HKUDS%2FVibe-Trading | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </p> -->
 
-<p>
+<p aline="center">
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
     <a href="https://github.com/jo-inc/camofox-browser/stargazers"><img src="https://img.shields.io/github/stars/jo-inc/camofox-browser" alt="GitHub stars" /></a>
     <a href="https://www.npmjs.com/package/camofox-browser"><img src="https://img.shields.io/npm/v/camofox-browser" alt="npm version" /></a>
