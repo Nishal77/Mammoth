@@ -3,9 +3,8 @@
 </p>
 
 <p align="center">
-  <img src="assets/Mammoth_logo.png" width="120" alt="Mammoth-logo"/>
+  <img src="public/assets/Mammoth_logo.png" width="120" alt="Mammoth-logo"/>
 </p>
-
 <h1 align="center">Mammoth: An AI Company Operating System</h1>
 
 <p align="center">
