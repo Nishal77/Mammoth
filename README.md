@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/Mammoth_logo.png" width="120" alt="Vibe-Trading Logo"/>
+  <img src="assets/Mammoth_logo.png" width="120" alt="Mammoth-logo"/>
 </p>
 
 <h1 align="center">Mammoth: An AI Company Operating System</h1>
