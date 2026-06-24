@@ -32,3 +32,6 @@ coverage/
 # TypeScript
 *.tsbuildinfo
 .claude/worktrees/
+
+# Graphify — generated visualisation, not source
+graphify-out/graph.html
